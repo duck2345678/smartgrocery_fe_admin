@@ -1,12 +1,14 @@
-import { create } from "zustand";
+import { create } from 'zustand';
 
-const ACCESS_TOKEN_KEY = "JWT_ACCESS_TOKEN";
-const REFRESH_TOKEN_KEY = "JWT_REFRESH_TOKEN";
+const ACCESS_TOKEN_KEY = 'JWT_ACCESS_TOKEN';
+const REFRESH_TOKEN_KEY = 'JWT_REFRESH_TOKEN';
+const USER_KEY = 'JWT_USER';
 
 export type UserDto = {
   id: string | number;
   email: string;
   fullName?: string | null;
+  roleName?: string | null;
 };
 
 type AuthState = {
@@ -40,11 +42,17 @@ export const useAuthStore = create<AuthState>((set) => ({
     });
   },
   setUser: (user) => {
+    if (user) {
+      localStorage.setItem(USER_KEY, JSON.stringify(user));
+    } else {
+      localStorage.removeItem(USER_KEY);
+    }
     set({ user });
   },
   logout: () => {
     localStorage.removeItem(ACCESS_TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
     set({ token: null, refreshToken: null, isAuthenticated: false, user: null });
   },
   checkAuth: () => {
@@ -54,7 +62,16 @@ export const useAuthStore = create<AuthState>((set) => ({
       set({ token: null, refreshToken: null, isAuthenticated: false, user: null });
       return false;
     }
-    set({ token: accessToken, refreshToken: refreshToken, isAuthenticated: true });
+    let user: UserDto | null = null;
+    const userRaw = localStorage.getItem(USER_KEY);
+    if (userRaw) {
+      try {
+        user = JSON.parse(userRaw) as UserDto;
+      } catch {
+        user = null;
+      }
+    }
+    set({ token: accessToken, refreshToken: refreshToken, isAuthenticated: true, user });
     return true;
   }
 }));
