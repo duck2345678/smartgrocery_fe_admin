@@ -31,6 +31,7 @@ const resources = {
         required: 'Bắt buộc',
         optional: 'Không bắt buộc',
         resetForm: 'Xoá nhập',
+        all: 'Tất cả',
       },
       nav: {
         dashboard: 'Dashboard',
@@ -43,10 +44,11 @@ const resources = {
         purchaseOrders: 'Phiếu nhập (PO)',
         promotions: 'Khuyến mãi',
         users: 'Quản lý tài khoản',
+        staffManagement: 'Quản lý nhân viên',
         ops: 'Ops Override',
         issues: 'Issue Inbox',
+        aiHealth: 'AI / Neo4j',
         profile: 'Hồ sơ',
-        settings: 'Cài đặt',
       },
       login: {
         title: 'SmartGrocery Admin',
@@ -326,6 +328,7 @@ const resources = {
         required: 'Required',
         optional: 'Optional',
         resetForm: 'Reset',
+        all: 'All',
       },
       nav: {
         dashboard: 'Dashboard',
@@ -338,10 +341,11 @@ const resources = {
         purchaseOrders: 'Purchase Orders',
         promotions: 'Promotions',
         users: 'Account Management',
+        staffManagement: 'Staff Management',
         ops: 'Ops Override',
         issues: 'Issue Inbox',
+        aiHealth: 'AI / Neo4j',
         profile: 'Profile',
-        settings: 'Settings',
       },
       login: {
         title: 'SmartGrocery Admin',

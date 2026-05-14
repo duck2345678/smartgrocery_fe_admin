@@ -1,6 +1,7 @@
 import React from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { BookText, Boxes, ClipboardList, LayoutDashboard, LogOut, Moon, Package, Percent, Settings, Store, Sun, Truck, User, Users } from 'lucide-react';
+import { BookText, Boxes, BrainCircuit, CalendarClock, ChevronLeft, ChevronRight, ClipboardList, LayoutDashboard, LogOut, Moon, Package, Percent, Store, Sun, User, Users } from 'lucide-react';
+
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../store/authStore';
 import { getAdminLanguage, setAdminLanguage } from '../i18n';
@@ -10,19 +11,16 @@ type AdminTheme = 'dark' | 'light';
 
 const navItems: Array<{ to: string; labelKey: string; icon: React.ReactNode }> = [
   { to: '/', labelKey: 'nav.dashboard', icon: <LayoutDashboard size={18} /> },
-  { to: '/audit-logs', labelKey: 'nav.auditLogs', icon: <BookText size={18} /> },
   { to: '/catalog/categories', labelKey: 'nav.categories', icon: <Boxes size={18} /> },
   { to: '/catalog/products', labelKey: 'nav.products', icon: <Package size={18} /> },
   { to: '/supply/inventory', labelKey: 'nav.inventory', icon: <Store size={18} /> },
-  { to: '/supply/warehouses', labelKey: 'nav.warehouses', icon: <Truck size={18} /> },
-  { to: '/supply/suppliers', labelKey: 'nav.suppliers', icon: <Truck size={18} /> },
   { to: '/supply/purchase-orders', labelKey: 'nav.purchaseOrders', icon: <ClipboardList size={18} /> },
   { to: '/supply/promotions', labelKey: 'nav.promotions', icon: <Percent size={18} /> },
   { to: '/users', labelKey: 'nav.users', icon: <Users size={18} /> },
-  { to: '/ops', labelKey: 'nav.ops', icon: <ClipboardList size={18} /> },
+  { to: '/staff-management', labelKey: 'nav.staffManagement', icon: <CalendarClock size={18} /> },
   { to: '/issues', labelKey: 'nav.issues', icon: <BookText size={18} /> },
+  { to: '/ai-health', labelKey: 'nav.aiHealth', icon: <BrainCircuit size={18} /> },
   { to: '/profile', labelKey: 'nav.profile', icon: <User size={18} /> },
-  { to: '/settings', labelKey: 'nav.settings', icon: <Settings size={18} /> },
 ];
 
 export function AdminLayout() {
@@ -37,6 +35,14 @@ export function AdminLayout() {
     return v === 'light' ? 'light' : 'dark';
   });
 
+  const [collapsed, setCollapsed] = React.useState<boolean>(() => {
+    return localStorage.getItem('SG_SIDEBAR_COLLAPSED') === 'true';
+  });
+
+  React.useEffect(() => {
+    localStorage.setItem('SG_SIDEBAR_COLLAPSED', String(collapsed));
+  }, [collapsed]);
+
   const [lang, setLang] = React.useState<'vi' | 'en'>(() => getAdminLanguage());
 
   React.useEffect(() => {
@@ -50,8 +56,8 @@ export function AdminLayout() {
   };
 
   return (
-    <div className="adm-shell">
-      <aside className="adm-sidebar">
+    <div className={`adm-shell ${collapsed ? 'adm-shell--collapsed' : ''}`}>
+      <aside className={`adm-sidebar ${collapsed ? 'adm-sidebar--collapsed' : ''}`}>
         <div className="adm-brand">
           <div className="adm-brand__logo">
             <img src="/smartgrocery-logo.png" alt="SmartGrocery" className="adm-brand__logo-img" />
@@ -62,9 +68,23 @@ export function AdminLayout() {
           </div>
         </div>
 
+        <button
+          className="adm-sidebar__toggle"
+          type="button"
+          onClick={() => setCollapsed((v) => !v)}
+          title={collapsed ? 'Mở rộng menu' : 'Thu gọn menu'}
+        >
+          {collapsed ? <ChevronRight size={14} /> : <><ChevronLeft size={14} /><span>Thu gọn</span></>}
+        </button>
+
         <nav className="adm-nav">
           {navItems.map((it) => (
-            <NavLink key={it.to} to={it.to} className={({ isActive }) => `adm-nav__item ${isActive ? 'is-active' : ''}`}>
+            <NavLink
+              key={it.to}
+              to={it.to}
+              title={collapsed ? t(it.labelKey) : undefined}
+              className={({ isActive }) => `adm-nav__item ${isActive ? 'is-active' : ''}`}
+            >
               <span className="adm-nav__icon">{it.icon}</span>
               <span className="adm-nav__label">{t(it.labelKey)}</span>
             </NavLink>
@@ -73,7 +93,12 @@ export function AdminLayout() {
 
         <div className="adm-sidebar__footer">
           <div className="adm-user">
-            <div className="adm-user__avatar">{(user?.fullName ?? user?.email ?? 'A').slice(0, 1).toUpperCase()}</div>
+            <div className="adm-user__avatar" style={user?.avatarUrl ? { padding: 0, overflow: 'hidden' } : {}}>
+              {user?.avatarUrl
+                ? <img src={user.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                : (user?.fullName ?? user?.email ?? 'A').slice(0, 1).toUpperCase()
+              }
+            </div>
             <div className="adm-user__meta">
               <div className="adm-user__name">{user?.fullName ?? user?.email ?? 'Admin'}</div>
               <div className="adm-user__role">{user?.roleName ?? 'ADMIN'}</div>
