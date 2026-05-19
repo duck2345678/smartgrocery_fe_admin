@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { adminApi } from '../api/adminApi';
@@ -23,13 +23,17 @@ export function LoginPage() {
     mutationFn: async () => adminApi.auth.login(email.trim(), password),
     onSuccess: (res) => {
       const role = res.user?.roleName ? String(res.user.roleName).toUpperCase() : '';
-      if (role !== 'ADMIN') {
+      if (role !== 'ADMIN' && role !== 'STAFF') {
         logout();
         throw new Error(t('login.noAdminRole'));
       }
       setTokens(res.token, res.refreshToken);
       setUser(res.user);
-      navigate('/', { replace: true });
+      if (role === 'STAFF') {
+        navigate('/staff', { replace: true });
+      } else {
+        navigate('/', { replace: true });
+      }
     },
     onError: () => {
       setTokens(null, null);
@@ -95,6 +99,13 @@ export function LoginPage() {
             {loginMutation.isPending ? t('login.submitting') : t('login.submit')}
           </button>
         </form>
+
+        <div className="login-footnote" style={{ textAlign: 'center', marginTop: '1rem' }}>
+          Chưa có tài khoản?{' '}
+          <Link to="/register" style={{ color: 'var(--color-primary, #16a34a)' }}>
+            Đăng ký
+          </Link>
+        </div>
 
         <div className="login-footnote">
           {t('login.backend')}: {import.meta.env.VITE_API_URL ?? 'http://localhost:8080'}

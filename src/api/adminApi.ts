@@ -201,6 +201,28 @@ export type AdminUser = {
   updatedAt: string | null;
 };
 
+export type ShiftRequest = {
+  id: number;
+  staffId: number;
+  staffName: string | null;
+  staffEmail: string | null;
+  workDate: string;
+  shiftType: 'S' | 'C' | 'G';
+  selectedBlocks: string | null;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+  adminNote: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+export type OrderSummary = {
+  id: number;
+  orderNumber: string | null;
+  status: string;
+  totalAmount: number | null;
+  createdAt: string | null;
+};
+
 const toNumber = (v: unknown): number => {
   if (typeof v === 'number') return v;
   const n = Number(v);
@@ -211,6 +233,9 @@ export const adminApi = {
   auth: {
     login: async (email: string, password: string): Promise<AuthResponse> => {
       return (await apiClient.post('/api/v1/auth/login', { email, password })) as AuthResponse;
+    },
+    register: async (payload: { email: string; password: string; fullName: string; phone: string }): Promise<AuthResponse> => {
+      return (await apiClient.post('/api/v1/auth/register', payload)) as AuthResponse;
     },
     logout: async (refreshToken: string): Promise<void> => {
       await apiClient.post('/api/v1/auth/logout', { refreshToken });
@@ -305,9 +330,12 @@ export const adminApi = {
   },
 
   products: {
-    list: async (page: number, size: number): Promise<Page<Product>> => {
-      const params = { page, size };
-      return (await apiClient.get('/api/v1/products', { params })) as Page<Product>;
+    list: async (page: number, size: number, filters?: { search?: string; categoryId?: number; status?: string }): Promise<Page<Product>> => {
+      const params: Record<string, unknown> = { page, size };
+      if (filters?.search) params.search = filters.search;
+      if (filters?.categoryId) params.categoryId = filters.categoryId;
+      if (filters?.status) params.status = filters.status;
+      return (await apiClient.get('/api/v1/admin/products', { params })) as Page<Product>;
     },
     createOrUpdateMultipart: async (
       mode: 'create' | 'update',
@@ -354,6 +382,9 @@ export const adminApi = {
       if (!payload.productId) throw new Error('Thiếu productId');
       return (await apiClient.put(`/api/v1/admin/products/${payload.productId}`, form, config)) as Product;
     },
+    deactivate: async (productId: number): Promise<void> => {
+      await apiClient.patch(`/api/v1/admin/products/${productId}/deactivate`);
+    },
   },
 
   inventory: {
@@ -392,7 +423,7 @@ export const adminApi = {
       const res = (await apiClient.get('/api/admin/purchase-orders')) as unknown;
       return Array.isArray(res) ? (res as PurchaseOrder[]) : [];
     },
-    createDraft: async (payload: { supplierId: number; items: Array<{ variantId: number; quantity: number; unitPrice: number }> }): Promise<PurchaseOrder> => {
+    createDraft: async (payload: { supplierId?: number; items: Array<{ variantId: number; quantity: number; unitPrice: number }> }): Promise<PurchaseOrder> => {
       return (await apiClient.post('/api/admin/purchase-orders', payload)) as PurchaseOrder;
     },
     receive: async (poId: number, warehouseId: number): Promise<PurchaseOrder> => {
@@ -415,6 +446,19 @@ export const adminApi = {
     }): Promise<PromotionCampaign> => {
       return (await apiClient.post('/api/admin/promotions/campaigns', payload)) as PromotionCampaign;
     },
+    updateCampaign: async (id: number, payload: Partial<{
+      campaignCode: string;
+      campaignName: string;
+      campaignType: string;
+      status: string;
+      startsAt: string;
+      endsAt: string;
+    }>): Promise<PromotionCampaign> => {
+      return (await apiClient.put(`/api/admin/promotions/campaigns/${id}`, payload)) as PromotionCampaign;
+    },
+    deleteCampaign: async (id: number): Promise<void> => {
+      await apiClient.delete(`/api/admin/promotions/campaigns/${id}`);
+    },
   },
 
   users: {
@@ -423,6 +467,7 @@ export const adminApi = {
       status?: string;
       createdFrom?: string;
       createdTo?: string;
+      search?: string;
       page?: number;
       size?: number;
     }): Promise<Page<AdminUser>> => {
@@ -460,6 +505,46 @@ export const adminApi = {
     },
     softDelete: async (id: number, reason: string): Promise<AdminUser> => {
       return (await apiClient.delete(`/api/v1/admin/users/${id}`, { data: { reason } })) as AdminUser;
+    },
+    uploadAvatar: async (id: number, file: File): Promise<AdminUser> => {
+      const form = new FormData();
+      form.set('avatar', file);
+      return (await apiClient.put(`/api/v1/admin/users/${id}`, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })) as AdminUser;
+    },
+  },
+
+  orders: {
+    getDetail: async (orderId: number): Promise<OrderSummary & { items?: unknown[] }> => {
+      return (await apiClient.get(`/api/v1/orders/admin/${orderId}`)) as OrderSummary & { items?: unknown[] };
+    },
+    listAll: async (): Promise<OrderSummary[]> => {
+      const res = (await apiClient.get('/api/v1/orders/admin/all')) as unknown;
+      const list = Array.isArray(res) ? res : [];
+      return list.map((x) => {
+        const o = x as Record<string, unknown>;
+        return {
+          id: toNumber(o.id),
+          orderNumber: o.orderNumber != null ? String(o.orderNumber) : null,
+          status: String(o.status ?? ''),
+          totalAmount: o.totalAmount != null ? toNumber(o.totalAmount) : null,
+          createdAt: o.createdAt != null ? String(o.createdAt) : null,
+        };
+      });
+    },
+  },
+
+  staffShifts: {
+    list: async (status?: string): Promise<ShiftRequest[]> => {
+      const res = (await apiClient.get('/api/admin/attendance/requests', { params: status ? { status } : {} })) as unknown;
+      return Array.isArray(res) ? (res as ShiftRequest[]) : [];
+    },
+    approve: async (id: number, adminNote?: string): Promise<ShiftRequest> => {
+      return (await apiClient.put(`/api/admin/attendance/requests/${id}/approve`, { adminNote: adminNote ?? '' })) as ShiftRequest;
+    },
+    reject: async (id: number, adminNote?: string): Promise<ShiftRequest> => {
+      return (await apiClient.put(`/api/admin/attendance/requests/${id}/reject`, { adminNote: adminNote ?? '' })) as ShiftRequest;
     },
   },
 

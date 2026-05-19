@@ -9,6 +9,7 @@ export type UserDto = {
   email: string;
   fullName?: string | null;
   roleName?: string | null;
+  avatarUrl?: string | null;
 };
 
 type AuthState = {
