@@ -307,7 +307,8 @@ export function ProfilePage() {
                 className="adm-input"
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                disabled={true}
+                style={{ cursor: 'not-allowed', opacity: 0.6 }}
                 placeholder="admin@smartgrocery.vn"
               />
             </label>
@@ -318,7 +319,8 @@ export function ProfilePage() {
                 className="adm-input"
                 type="tel"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                disabled={true}
+                style={{ cursor: 'not-allowed', opacity: 0.6 }}
                 placeholder="0901 234 567"
               />
             </label>

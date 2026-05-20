@@ -12,6 +12,11 @@ export function CategoriesPage() {
     queryFn:  () => adminApi.categories.list(),
   });
 
+  const productsQuery = useQuery({
+    queryKey: ['admin-products-for-categories'],
+    queryFn:  () => adminApi.products.adminList({ size: 1000 }),
+  });
+
   const [showForm,         setShowForm]         = useState(false);
   const [editing,          setEditing]          = useState<Category | null>(null);
   const [categoryCode,     setCategoryCode]     = useState('');
@@ -22,6 +27,7 @@ export function CategoriesPage() {
   const [isActive,         setIsActive]         = useState(true);
 
   const [deactivateTarget, setDeactivateTarget] = useState<Category | null>(null);
+  const [statusFilter,     setStatusFilter]     = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
 
   const resetForm = () => {
     setEditing(null);
@@ -70,6 +76,25 @@ export function CategoriesPage() {
   const inactiveCount = useMemo(() => categories.filter((c) => !c.isActive).length,             [categories]);
   const rootCount    = useMemo(() => categories.filter((c) => !c.parentCategory?.id).length,    [categories]);
 
+  const filteredCategories = useMemo(() => {
+    return categories.filter((c) => {
+      if (statusFilter === 'ACTIVE') return c.isActive;
+      if (statusFilter === 'INACTIVE') return !c.isActive;
+      return true;
+    });
+  }, [categories, statusFilter]);
+
+  const products     = useMemo(() => productsQuery.data?.content ?? [], [productsQuery.data]);
+  const productCountByCategoryId = useMemo(() => {
+    const counts: Record<number, number> = {};
+    products.forEach((p) => {
+      if (p.category?.id) {
+        counts[p.category.id] = (counts[p.category.id] ?? 0) + 1;
+      }
+    });
+    return counts;
+  }, [products]);
+
   const catById = useMemo(() => Object.fromEntries(categories.map((c) => [c.id, c])), [categories]);
 
   const canSubmit = useMemo(
@@ -95,6 +120,11 @@ export function CategoriesPage() {
             <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 16 }}>
               <strong>{deactivateTarget.name}</strong> (#{deactivateTarget.id}) sẽ bị ẩn khỏi hệ thống.
             </div>
+            {deactivateMutation.isError && (
+              <div className="inline-alert" style={{ marginBottom: 16 }}>
+                {deactivateMutation.error instanceof Error ? deactivateMutation.error.message : 'Không thể vô hiệu danh mục này'}
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="adm-button adm-button--ghost" type="button" onClick={() => setDeactivateTarget(null)}>
                 Hủy
@@ -166,21 +196,6 @@ export function CategoriesPage() {
               <input className="adm-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Trái cây" />
             </label>
             <label className="adm-field">
-              <div className="adm-field__label">Danh mục cha</div>
-              <select className="adm-input" value={parentCategoryId} onChange={(e) => setParentCategoryId(e.target.value)}>
-                <option value="">— Không có danh mục cha —</option>
-                {categories
-                  .filter((c) => !editing || c.id !== editing.id)
-                  .map((c) => (
-                    <option key={c.id} value={String(c.id)}>{c.name} (#{c.id})</option>
-                  ))}
-              </select>
-            </label>
-            <label className="adm-field">
-              <div className="adm-field__label">{t('fields.sortOrder')}</div>
-              <input className="adm-input" type="number" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} placeholder="0" />
-            </label>
-            <label className="adm-field">
               <div className="adm-field__label">Trạng thái</div>
               <select className="adm-input" value={isActive ? 'true' : 'false'} onChange={(e) => setIsActive(e.target.value === 'true')}>
                 <option value="true">Hoạt động</option>
@@ -205,9 +220,21 @@ export function CategoriesPage() {
 
       {/* ── Table ── */}
       <div className="card">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, gap: 12, flexWrap: 'wrap' }}>
           <div className="card__label">{t('pages.categoriesTitle')}</div>
-          <span className="adm-chip">Tổng: {categories.length}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <select
+              className="adm-input"
+              style={{ width: 180, margin: 0, padding: '4px 8px', fontSize: 13, height: 32 }}
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as any)}
+            >
+              <option value="ALL">Tất cả trạng thái</option>
+              <option value="ACTIVE">Đang hoạt động</option>
+              <option value="INACTIVE">Đã vô hiệu</option>
+            </select>
+            <span className="adm-chip" style={{ margin: 0 }}>Hiển thị: {filteredCategories.length} / {categories.length}</span>
+          </div>
         </div>
         <div className="table-wrap">
           <table className="adm-table">
@@ -216,32 +243,30 @@ export function CategoriesPage() {
                 <th>ID</th>
                 <th>Mã</th>
                 <th>Tên danh mục</th>
-                <th>Danh mục cha</th>
-                <th>Thứ tự</th>
+                <th>Số sản phẩm</th>
                 <th>Trạng thái</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {listQuery.isLoading ? (
-                <tr><td colSpan={7} className="muted">{t('common.loading')}</td></tr>
+                <tr><td colSpan={6} className="muted">{t('common.loading')}</td></tr>
               ) : listQuery.isError ? (
-                <tr><td colSpan={7} className="muted">{listQuery.error instanceof Error ? listQuery.error.message : t('messages.loadCategoriesFailed')}</td></tr>
-              ) : categories.length === 0 ? (
-                <tr><td colSpan={7} className="muted">{t('common.noData')}</td></tr>
+                <tr><td colSpan={6} className="muted">{listQuery.error instanceof Error ? listQuery.error.message : t('messages.loadCategoriesFailed')}</td></tr>
+              ) : filteredCategories.length === 0 ? (
+                <tr><td colSpan={6} className="muted">{t('common.noData')}</td></tr>
               ) : (
-                categories
+                filteredCategories
                   .slice()
-                  .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+                  .sort((a, b) => a.id - b.id)
                   .map((c) => {
-                    const parentName = c.parentCategory?.id ? (catById[c.parentCategory.id]?.name ?? `#${c.parentCategory.id}`) : null;
+                    const productCount = productCountByCategoryId[c.id] ?? 0;
                     return (
                       <tr key={c.id}>
                         <td className="mono">{c.id}</td>
                         <td className="mono">{c.categoryCode}</td>
                         <td>{c.name}</td>
-                        <td>{parentName ?? <span className="muted">—</span>}</td>
-                        <td className="mono">{c.sortOrder ?? 0}</td>
+                        <td className="mono" style={{ fontWeight: 600 }}>{productCount}</td>
                         <td>
                           <span className={`adm-badge ${c.isActive ? 'adm-badge--success' : 'adm-badge--muted'}`}>
                             {c.isActive ? 'Hoạt động' : 'Vô hiệu'}

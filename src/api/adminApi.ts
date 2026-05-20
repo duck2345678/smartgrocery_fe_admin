@@ -110,11 +110,36 @@ export type Product = {
     sku: string;
     barcode: string | null;
     variantName: string | null;
+    color?: string | null;
+    size?: string | null;
     unit?: string | null;
     netPrice: number | null;
+    compareAtPrice?: number | null;
+    flashSaleEndsAt?: string | null;
+    status?: string | null;
     stock?: number | null;
     aisleLocation?: string | null;
   }>;
+};
+
+export type AdminProductSummary = {
+  totalCount: number;
+  activeCount: number;
+  hiddenCount: number;
+  deletedCount: number;
+};
+
+export type ProductVariantPayload = {
+  id?: number;
+  sku: string;
+  barcode?: string;
+  variantName?: string;
+  color?: string;
+  size?: string;
+  unit?: string;
+  netPrice: number;
+  stock: number;
+  status?: string;
 };
 
 export type InventoryStock = {
@@ -173,6 +198,42 @@ export type PromotionCampaign = {
   endsAt: string | null;
 };
 
+export type VoucherDto = {
+  id: number;
+  voucherCode: string;
+  discountType: 'FIXED_AMOUNT' | 'PERCENT';
+  discountValue: number;
+  minOrderAmount: number | null;
+  validFrom: string | null;
+  validUntil: string | null;
+  usageLimitPerVoucher: number;
+  usedCount: number;
+  status: string;
+  hidden?: boolean;
+  revealTrigger?: string;
+  assignedUserId?: number | null;
+  unlockedByOrderId?: number | null;
+};
+
+export type VoucherGenerationRequest = {
+  quantity: number;
+  prefix: string;
+  discountType: 'FIXED_AMOUNT' | 'PERCENT';
+  discountValue: number;
+  minOrderAmount?: number;
+  validUntil: string;
+  usageLimitPerVoucher: number;
+  hidden?: boolean;
+  revealTrigger?: string;
+};
+
+export type AdminProductDiscountRequest = {
+  variantIds: number[];
+  discountPercentage?: number;
+  newNetPrice?: number;
+  flashSaleEndsAt?: string;
+};
+
 export type Neo4jHealth = {
   ok: boolean;
   productNodeCount: number;
@@ -223,16 +284,122 @@ export type OrderSummary = {
   createdAt: string | null;
 };
 
+export type OrderItemDto = {
+  id: number;
+  productName: string;
+  variantName: string | null;
+  sku: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+};
+
+export type OrderDto = {
+  id: number;
+  orderNumber: string;
+  totalAmount: number;
+  status: string;
+  paymentMethod: string;
+  paymentStatus: string;
+  createdAt: string;
+  items?: OrderItemDto[];
+};
+
+export type UserNutritionProfileDto = {
+  userId: number;
+  healthGoals?: string;
+  dietaryPreference?: string;
+  allergies?: string;
+  height?: number;
+  weight?: number;
+  bmi?: number;
+};
+
+export type UserAddressDto = {
+  id: number;
+  addressType: string;
+  receiverName: string;
+  receiverPhone: string;
+  streetAddress: string;
+  ward: string;
+  district: string;
+  city: string;
+  isDefault: boolean;
+};
+
+export type CustomerAnalyticsDto = {
+  totalSpent: number;
+  orderCount: number;
+  cancelRate: number;
+  vipStatus: string;
+};
+
+export type AdminShiftRequestItemDto = {
+  id: number;
+  userId: number;
+  userFullName: string | null;
+  workDate: string;
+  shiftType: string;
+  selectedBlocks: string | null;
+  status: string;
+  adminNote: string | null;
+  scheduledCount: number;
+  scheduledAfterApprove: number;
+  createdAt: string;
+};
+
+export type AttendanceMonthlyStatsDto = {
+  year: number;
+  month: number;
+  totalShifts: number;
+  presentCount: number;
+  absentCount: number;
+  leaveCount: number;
+  attendanceRate: number;
+  details?: unknown[];
+};
+
+export type AttendanceInsightDto = {
+  totalStaff: number;
+  activeToday: number;
+  pendingRequests: number;
+  topPerformers: Array<{ userId: number; name: string; score: number }>;
+};
+
 const toNumber = (v: unknown): number => {
   if (typeof v === 'number') return v;
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 };
 
+const unwrap = <T>(value: unknown): T => {
+  if (value && typeof value === 'object' && 'data' in value) {
+    return (value as { data: T }).data;
+  }
+  return value as T;
+};
+
+const normalizeRoleName = (value: unknown): string => {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const role = typeof raw === 'string' ? raw.trim().toUpperCase() : '';
+  if (role === 'ADMIN' || role === 'ROLE_ADMIN') return 'ADMIN';
+  if (role === 'STAFF' || role === 'ROLE_STAFF') return 'STAFF';
+  if (role === 'CUSTOMER' || role === 'ROLE_CUSTOMER') return 'CUSTOMER';
+  return role;
+};
+
 export const adminApi = {
   auth: {
     login: async (email: string, password: string): Promise<AuthResponse> => {
-      return (await apiClient.post('/api/v1/auth/login', { email, password })) as AuthResponse;
+      const response = await apiClient.post('/api/v1/auth/login', { email, password });
+      const payload = unwrap<AuthResponse>(response);
+      return {
+        ...payload,
+        user: {
+          ...payload.user,
+          roleName: normalizeRoleName(payload.user?.roleName),
+        },
+      };
     },
     register: async (payload: { email: string; password: string; fullName: string; phone: string }): Promise<AuthResponse> => {
       return (await apiClient.post('/api/v1/auth/register', payload)) as AuthResponse;
@@ -337,6 +504,16 @@ export const adminApi = {
       if (filters?.status) params.status = filters.status;
       return (await apiClient.get('/api/v1/admin/products', { params })) as Page<Product>;
     },
+    adminList: async (params: {
+      search?: string;
+      categoryId?: number;
+      status?: string;
+      discounted?: boolean;
+      page?: number;
+      size?: number;
+    }): Promise<Page<Product>> => {
+      return (await apiClient.get('/api/v1/admin/products', { params })) as Page<Product>;
+    },
     createOrUpdateMultipart: async (
       mode: 'create' | 'update',
       payload: {
@@ -352,9 +529,12 @@ export const adminApi = {
         sku: string;
         barcode?: string;
         variantName?: string;
+        color?: string;
+        size?: string;
         unit?: string;
         netPrice: number;
         stock: number;
+        variants?: ProductVariantPayload[];
         image?: File | null;
       }
     ): Promise<Product> => {
@@ -370,9 +550,12 @@ export const adminApi = {
       form.set('sku', payload.sku);
       if (payload.barcode != null) form.set('barcode', payload.barcode);
       if (payload.variantName != null) form.set('variantName', payload.variantName);
+      if (payload.color != null) form.set('color', payload.color);
+      if (payload.size != null) form.set('size', payload.size);
       if (payload.unit != null) form.set('unit', payload.unit);
       form.set('netPrice', String(payload.netPrice));
       form.set('stock', String(payload.stock));
+      if (payload.variants) form.set('variantsJson', JSON.stringify(payload.variants));
       if (payload.image) form.set('image', payload.image);
 
       const config = { headers: { 'Content-Type': 'multipart/form-data' } };
@@ -384,6 +567,24 @@ export const adminApi = {
     },
     deactivate: async (productId: number): Promise<void> => {
       await apiClient.patch(`/api/v1/admin/products/${productId}/deactivate`);
+    },
+    setStatus: async (id: number, status: 'ACTIVE' | 'HIDDEN', reason?: string): Promise<Product> => {
+      return (await apiClient.patch(`/api/v1/admin/products/${id}/status`, { status, reason })) as Product;
+    },
+    softDelete: async (id: number, reason?: string): Promise<Product> => {
+      return (await apiClient.delete(`/api/v1/admin/products/${id}`, { data: { reason } })) as Product;
+    },
+    restore: async (id: number, reason?: string): Promise<Product> => {
+      return (await apiClient.post(`/api/v1/admin/products/${id}/restore`, { reason })) as Product;
+    },
+    exportExcel: async (params: { search?: string; categoryId?: number; status?: string }): Promise<Blob> => {
+      return (await apiClient.get('/api/v1/admin/products/export', { params, responseType: 'blob' })) as Blob;
+    },
+    getSummary: async (): Promise<AdminProductSummary> => {
+      return (await apiClient.get('/api/v1/admin/products/summary')) as AdminProductSummary;
+    },
+    cleanup: async (): Promise<string> => {
+      return (await apiClient.post('/api/v1/admin/products/cleanup')) as string;
     },
   },
 
@@ -459,6 +660,20 @@ export const adminApi = {
     deleteCampaign: async (id: number): Promise<void> => {
       await apiClient.delete(`/api/admin/promotions/campaigns/${id}`);
     },
+    // New Voucher & Discount APIs
+    listVouchers: async (): Promise<VoucherDto[]> => {
+      const res = (await apiClient.get('/api/admin/vouchers')) as unknown;
+      return Array.isArray(res) ? (res as VoucherDto[]) : [];
+    },
+    generateVouchers: async (payload: VoucherGenerationRequest): Promise<VoucherDto[]> => {
+      return (await apiClient.post('/api/admin/vouchers/generate', payload)) as VoucherDto[];
+    },
+    deleteVoucher: async (id: number): Promise<void> => {
+      await apiClient.delete(`/api/admin/vouchers/${id}`);
+    },
+    updateDiscounts: async (payload: AdminProductDiscountRequest): Promise<number> => {
+      return (await apiClient.post('/api/admin/vouchers/discounts', payload)) as number;
+    },
   },
 
   users: {
@@ -513,6 +728,20 @@ export const adminApi = {
         headers: { 'Content-Type': 'multipart/form-data' },
       })) as AdminUser;
     },
+    orders: async (id: number): Promise<OrderDto[]> => {
+      const res = (await apiClient.get(`/api/v1/admin/users/${id}/orders`)) as unknown;
+      return Array.isArray(res) ? (res as OrderDto[]) : [];
+    },
+    nutrition: async (id: number): Promise<UserNutritionProfileDto> => {
+      return (await apiClient.get(`/api/v1/users/${id}/nutrition`)) as UserNutritionProfileDto;
+    },
+    addresses: async (id: number): Promise<UserAddressDto[]> => {
+      const res = (await apiClient.get(`/api/v1/users/${id}/addresses`)) as unknown;
+      return Array.isArray(res) ? (res as UserAddressDto[]) : [];
+    },
+    analytics: async (id: number): Promise<CustomerAnalyticsDto> => {
+      return (await apiClient.get(`/api/v1/admin/users/${id}/analytics`)) as CustomerAnalyticsDto;
+    },
   },
 
   orders: {
@@ -545,6 +774,27 @@ export const adminApi = {
     },
     reject: async (id: number, adminNote?: string): Promise<ShiftRequest> => {
       return (await apiClient.put(`/api/admin/attendance/requests/${id}/reject`, { adminNote: adminNote ?? '' })) as ShiftRequest;
+    },
+  },
+
+  shiftRequests: {
+    list: async (params: { from?: string; to?: string; status?: string }): Promise<AdminShiftRequestItemDto[]> => {
+      const res = await apiClient.get('/api/v1/admin/shift-requests', { params });
+      return unwrap<AdminShiftRequestItemDto[]>(res);
+    },
+    updateStatus: async (id: number, payload: { status: 'APPROVED' | 'REJECTED'; adminNote?: string }): Promise<void> => {
+      await apiClient.put(`/api/v1/admin/shift-requests/${id}/status`, payload);
+    },
+  },
+
+  attendance: {
+    getMonthlyStats: async (userId: number, year: number, month: number): Promise<AttendanceMonthlyStatsDto> => {
+      const res = await apiClient.get(`/api/v1/admin/attendance/monthly-stats/${userId}`, { params: { year, month } });
+      return unwrap<AttendanceMonthlyStatsDto>(res);
+    },
+    getInsights: async (year: number, month: number): Promise<AttendanceInsightDto> => {
+      const res = await apiClient.get('/api/v1/admin/attendance/insights', { params: { year, month } });
+      return unwrap<AttendanceInsightDto>(res);
     },
   },
 

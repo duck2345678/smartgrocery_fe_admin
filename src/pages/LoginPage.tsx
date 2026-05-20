@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
@@ -12,6 +13,7 @@ export function LoginPage() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [debugInfo, setDebugInfo] = useState<string | null>(null);
 
   const setTokens = useAuthStore((s) => s.setTokens);
   const setUser = useAuthStore((s) => s.setUser);
@@ -23,21 +25,30 @@ export function LoginPage() {
     mutationFn: async () => adminApi.auth.login(email.trim(), password),
     onSuccess: (res) => {
       const role = res.user?.roleName ? String(res.user.roleName).toUpperCase() : '';
-      if (role !== 'ADMIN' && role !== 'STAFF') {
+      const normalizedRole = role.startsWith('ROLE_') ? role.slice(5) : role;
+      if (normalizedRole !== 'ADMIN' && normalizedRole !== 'STAFF') {
         logout();
-        throw new Error(t('login.noAdminRole'));
+        throw new Error('Bạn không có quyền truy cập admin');
       }
       setTokens(res.token, res.refreshToken);
-      setUser(res.user);
-      if (role === 'STAFF') {
+      setUser({ ...res.user, roleName: normalizedRole });
+      if (normalizedRole === 'STAFF') {
         navigate('/staff', { replace: true });
       } else {
         navigate('/', { replace: true });
       }
     },
-    onError: () => {
+    onError: (error) => {
       setTokens(null, null);
       setUser(null);
+      const axiosError = axios.isAxiosError(error) ? error : undefined;
+      const debugPayload = {
+        message: error instanceof Error ? error.message : String(error),
+        status: axiosError?.response?.status,
+        responseData: axiosError?.response?.data,
+      };
+      setDebugInfo(JSON.stringify(debugPayload, null, 2));
+      console.error('Login error:', debugPayload);
     },
   });
 
@@ -62,7 +73,9 @@ export function LoginPage() {
 
         {loginMutation.isError && (
           <div className="login-alert login-alert--danger">
-            {loginMutation.error instanceof Error ? loginMutation.error.message : t('login.failed')}
+            {loginMutation.error instanceof Error 
+              ? loginMutation.error.message 
+              : 'Đã có lỗi xảy ra. Vui lòng thử lại.'}
           </div>
         )}
 
@@ -70,6 +83,7 @@ export function LoginPage() {
           className="login-form"
           onSubmit={(e) => {
             e.preventDefault();
+            console.debug('Login submit', { email, password });
             if (!canSubmit) return;
             loginMutation.mutate();
           }}
@@ -110,6 +124,18 @@ export function LoginPage() {
         <div className="login-footnote">
           {t('login.backend')}: {import.meta.env.VITE_API_URL ?? 'http://localhost:8080'}
         </div>
+
+        <div style={{ marginTop: '16px', fontSize: '12px', opacity: 0.7, borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '12px' }}>
+          <div style={{ marginBottom: '4px' }}>🔐 <strong>Tài khoản test:</strong></div>
+          <div>Email: admin.p0@smartgrocery.com</div>
+          <div>Mật khẩu: password123</div>
+        </div>
+
+        {debugInfo && (
+          <pre style={{ marginTop: '16px', padding: '12px', background: '#111', color: '#fff', borderRadius: '8px', fontSize: '12px', overflowX: 'auto' }}>
+            {debugInfo}
+          </pre>
+        )}
       </div>
     </div>
   );

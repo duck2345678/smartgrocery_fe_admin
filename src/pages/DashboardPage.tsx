@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { adminApi } from '../api/adminApi';
 
 const fmt = (n: number) => n.toLocaleString('vi-VN');
@@ -103,6 +104,7 @@ function SectionHeader({ label, hint }: { label: string; hint?: string }) {
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function ProgressBar({ pct, color }: { pct: number; color: string }) {
   return (
     <div style={{ height: 6, borderRadius: 999, background: 'var(--border)', overflow: 'hidden' }}>
@@ -119,6 +121,7 @@ function ProgressBar({ pct, color }: { pct: number; color: string }) {
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 export function DashboardPage() {
+  const { t } = useTranslation();
   const [dateRange, setDateRange] = useState<DateRange>('30d');
 
   const opsQuery = useQuery({
@@ -174,8 +177,8 @@ export function DashboardPage() {
     const { from, to } = getDateRange(dateRange);
     return (ordersQuery.data ?? []).filter((o) => {
       if (!o.createdAt) return false;
-      const t = new Date(o.createdAt).getTime();
-      return t >= from && t <= to;
+      const time = new Date(o.createdAt).getTime();
+      return time >= from && time <= to;
     });
   }, [ordersQuery.data, dateRange]);
 
@@ -347,7 +350,7 @@ export function DashboardPage() {
         </div>
       </section>
 
-      {/* ── Vận hành thời gian thực ── */}
+      {/* ── Real-time Operations ── */}
       <section>
         <SectionHeader label="Vận hành thời gian thực" />
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 14 }}>
@@ -384,7 +387,7 @@ export function DashboardPage() {
         </div>
       </section>
 
-      {/* ── Nhân sự hôm nay ── */}
+      {/* ── Today's Shifts ── */}
       <section>
         <SectionHeader
           label="Nhân sự hôm nay"
@@ -418,11 +421,11 @@ export function DashboardPage() {
                     }}
                   >
                     <div style={{
-                      width: 34, height: 34, borderRadius: 10,
-                      background: st.color,
-                      display: 'grid', placeItems: 'center',
-                      fontWeight: 900, fontSize: 14, color: '#fff',
-                      flexShrink: 0, boxShadow: `0 0 14px ${st.border}`,
+                       width: 34, height: 34, borderRadius: 10,
+                       background: st.color,
+                       display: 'grid', placeItems: 'center',
+                       fontWeight: 900, fontSize: 14, color: '#fff',
+                       flexShrink: 0, boxShadow: `0 0 14px ${st.border}`,
                     }}>
                       {initial}
                     </div>
@@ -440,7 +443,7 @@ export function DashboardPage() {
         </div>
       </section>
 
-      {/* ── Phân bổ đơn hàng ── */}
+      {/* ── Order Status Pipeline ── */}
       <section>
         <SectionHeader label="Phân bổ đơn hàng" hint="(tất cả thời gian)" />
         <div className="card">
@@ -479,7 +482,7 @@ export function DashboardPage() {
         </div>
       </section>
 
-      {/* ── Hoạt động khác ── */}
+      {/* ── Other Operations ── */}
       <section>
         <SectionHeader label="Hoạt động khác" />
         <div className="grid grid--3">
@@ -513,7 +516,7 @@ export function DashboardPage() {
         </div>
       </section>
 
-      {/* ── Giao dịch & Kho ── */}
+      {/* ── Transactions and Stock ── */}
       <section>
         <SectionHeader label="Giao dịch & Kho" />
         <div className="grid grid--2">
@@ -591,7 +594,7 @@ export function DashboardPage() {
         </div>
       </section>
 
-      {/* ── Cảnh báo & Sự cố ── */}
+      {/* ── Warnings & SLA Issues ── */}
       <section>
         <SectionHeader label="Cảnh báo & Sự cố" />
         <div className="grid grid--2">

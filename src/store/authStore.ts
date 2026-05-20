@@ -23,11 +23,25 @@ type AuthState = {
   checkAuth: () => boolean;
 };
 
+const initialAccessToken = typeof window !== 'undefined' ? localStorage.getItem(ACCESS_TOKEN_KEY) : null;
+const initialRefreshToken = typeof window !== 'undefined' ? localStorage.getItem(REFRESH_TOKEN_KEY) : null;
+let initialUser: UserDto | null = null;
+if (typeof window !== 'undefined') {
+  const userRaw = localStorage.getItem(USER_KEY);
+  if (userRaw) {
+    try {
+      initialUser = JSON.parse(userRaw) as UserDto;
+    } catch {
+      initialUser = null;
+    }
+  }
+}
+
 export const useAuthStore = create<AuthState>((set) => ({
-  token: null,
-  refreshToken: null,
-  isAuthenticated: false,
-  user: null,
+  token: initialAccessToken,
+  refreshToken: initialRefreshToken,
+  isAuthenticated: Boolean(initialAccessToken && initialRefreshToken),
+  user: initialUser,
   setTokens: (accessToken, refreshToken) => {
     if (accessToken && refreshToken) {
       localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);

@@ -21,7 +21,8 @@ import { StaffLayout } from './layout/StaffLayout';
 import { StaffDashboardPage } from './pages/StaffDashboardPage';
 import { StaffCustomersPage } from './pages/StaffCustomersPage';
 import { RegisterPage } from './pages/RegisterPage';
-import { StaffManagementPage } from './pages/StaffManagementPage';
+import { CustomersPage } from './pages/CustomersPage';
+import { StaffPage } from './pages/StaffPage';
 
 export default function App() {
   const checkAuth = useAuthStore((s) => s.checkAuth);
@@ -44,11 +45,15 @@ export default function App() {
           <Route path="supply/purchase-orders" element={<PurchaseOrdersPage />} />
           <Route path="supply/promotions" element={<PromotionsPage />} />
           <Route path="users" element={<UsersPage />} />
-          <Route path="staff-management" element={<StaffManagementPage />} />
+          <Route path="staff-management" element={<StaffPage />} />
           <Route path="issues" element={<AdminIssuesPage />} />
           <Route path="issues/:id" element={<AdminIssueDetailPage />} />
           <Route path="ai-health" element={<AiHealthPage />} />
           <Route path="profile" element={<ProfilePage />} />
+          <Route path="/customers" element={<CustomersPage />} />
+          <Route path="/staff-list" element={<StaffPage />} />
+          <Route path="/products" element={<ProductsPage />} />
+          <Route path="/promotions" element={<PromotionsPage />} />
         </Route>
       </Route>
 

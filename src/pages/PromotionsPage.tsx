@@ -1,384 +1,398 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { adminApi, type PromotionCampaign } from '../api/adminApi';
+import { useTranslation } from 'react-i18next';
+import { adminApi, type Product } from '../api/adminApi';
 
 const toDateTimeLocal = (v: string | null | undefined) => (!v ? '' : v.length > 16 ? v.slice(0, 16) : v);
 const toIso           = (v: string) => (!v ? undefined : v.length === 16 ? `${v}:00` : v);
 const fmtDate         = (v: string | null | undefined) => (v ? v.slice(0, 16).replace('T', ' ') : '—');
 
-const STATUS_OPTIONS = ['ACTIVE', 'INACTIVE', 'DRAFT'];
-const TYPE_OPTIONS   = ['PERCENT', 'FIXED', 'BUY_X_GET_Y'];
-
-const STATUS_BADGE: Record<string, string> = {
-  ACTIVE:   'adm-badge--success',
-  DRAFT:    'adm-badge--pending',
-  INACTIVE: 'adm-badge--muted',
-};
-
-const TYPE_BADGE: Record<string, string> = {
-  PERCENT:     'adm-badge--cyan',
-  FIXED:       'adm-badge--purple',
-  BUY_X_GET_Y: 'adm-badge--pending',
-};
-
-const TYPE_LABEL: Record<string, string> = {
-  PERCENT:     'Giảm %',
-  FIXED:       'Giảm cố định',
-  BUY_X_GET_Y: 'Mua X tặng Y',
-};
-
-function timeStatus(c: PromotionCampaign): { label: string; cls: string } | null {
-  if (!c.startsAt && !c.endsAt) return null;
-  const now = Date.now();
-  const start = c.startsAt ? new Date(c.startsAt).getTime() : null;
-  const end   = c.endsAt   ? new Date(c.endsAt).getTime()   : null;
-  if (start && now < start) return { label: 'Sắp tới',   cls: 'adm-badge--warn' };
-  if (end   && now > end)   return { label: 'Đã hết hạn', cls: 'adm-badge--muted' };
-  return { label: 'Đang chạy', cls: 'adm-badge--success' };
-}
-
 export function PromotionsPage() {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
+  const [activeTab, setActiveTab] = useState<'VOUCHERS' | 'FLASH_SALE'>('VOUCHERS');
+  const [voucherPage, setVoucherPage] = useState<'NORMAL' | 'AI'>('NORMAL');
 
-  const listQuery = useQuery({
-    queryKey: ['promotions-campaigns'],
-    queryFn:  () => adminApi.promotions.listCampaigns(),
+  // --- VOUCHER LOGIC ---
+  const voucherListQuery = useQuery({
+    queryKey: ['admin-vouchers'],
+    queryFn: () => adminApi.promotions.listVouchers(),
+    enabled: activeTab === 'VOUCHERS',
   });
 
-  // ── Form state ──
-  const [showForm,      setShowForm]      = useState(false);
-  const [editing,       setEditing]       = useState<PromotionCampaign | null>(null);
-  const [campaignCode,  setCampaignCode]  = useState('');
-  const [campaignName,  setCampaignName]  = useState('');
-  const [campaignType,  setCampaignType]  = useState('PERCENT');
-  const [status,        setStatus]        = useState('ACTIVE');
-  const [startsAt,      setStartsAt]      = useState('');
-  const [endsAt,        setEndsAt]        = useState('');
+  const [vForm, setVForm] = useState({
+    quantity: 10,
+    prefix: 'SG',
+    discountType: 'FIXED_AMOUNT' as 'FIXED_AMOUNT' | 'PERCENT',
+    discountValue: 20000,
+    minOrderAmount: 100000,
+    validUntil: '',
+    usageLimit: 1,
+    hidden: false,
+  });
 
-  // ── Filter state ──
-  const [filterStatus, setFilterStatus] = useState('');
-  const [filterType,   setFilterType]   = useState('');
+  const visibleVouchers = (voucherListQuery.data ?? []).filter((v) =>
+    voucherPage === 'AI' ? v.hidden : !v.hidden
+  );
 
-  // ── Delete dialog ──
-  const [deleteTarget, setDeleteTarget] = useState<PromotionCampaign | null>(null);
-
-  const resetForm = () => {
-    setEditing(null);
-    setCampaignCode(''); setCampaignName('');
-    setCampaignType('PERCENT'); setStatus('ACTIVE');
-    setStartsAt(''); setEndsAt('');
+  const switchVoucherPage = (page: 'NORMAL' | 'AI') => {
+    setVoucherPage(page);
+    setVForm((prev) => ({
+      ...prev,
+      hidden: page === 'AI',
+      prefix: page === 'AI' ? 'AI-GIFT' : 'SG',
+    }));
   };
 
-  const startEdit = (c: PromotionCampaign) => {
-    setEditing(c);
-    setCampaignCode(c.campaignCode);
-    setCampaignName(c.campaignName);
-    setCampaignType(c.campaignType);
-    setStatus(c.status);
-    setStartsAt(toDateTimeLocal(c.startsAt));
-    setEndsAt(toDateTimeLocal(c.endsAt));
-    setShowForm(true);
-  };
-
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      if (!campaignCode.trim()) throw new Error('Vui lòng nhập mã chiến dịch');
-      if (!campaignName.trim()) throw new Error('Vui lòng nhập tên chiến dịch');
-      const payload = {
-        campaignCode: campaignCode.trim(),
-        campaignName: campaignName.trim(),
-        campaignType,
-        status,
-        startsAt: toIso(startsAt),
-        endsAt:   toIso(endsAt),
-      };
-      return editing
-        ? adminApi.promotions.updateCampaign(editing.id, payload)
-        : adminApi.promotions.createCampaign(payload);
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['promotions-campaigns'] });
-      resetForm();
-      setShowForm(false);
-    },
+  const generateVouchersMutation = useMutation({
+    mutationFn: () => adminApi.promotions.generateVouchers({
+      quantity: vForm.quantity,
+      prefix: voucherPage === 'AI' ? (vForm.prefix || 'AI-GIFT') : vForm.prefix,
+      discountType: vForm.discountType,
+      discountValue: vForm.discountValue,
+      minOrderAmount: vForm.minOrderAmount,
+      validUntil: vForm.validUntil ? `${vForm.validUntil}:00` : new Date(Date.now() + 7 * 86400000).toISOString(),
+      usageLimitPerVoucher: vForm.usageLimit,
+      hidden: voucherPage === 'AI',
+      revealTrigger: voucherPage === 'AI' ? 'AI_ORDER_COMPLETED' : 'PUBLIC',
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-vouchers'] });
+      alert(t('common.save'));
+    }
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) => adminApi.promotions.deleteCampaign(id),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['promotions-campaigns'] });
-      setDeleteTarget(null);
-    },
+  const deleteVoucherMutation = useMutation({
+    mutationFn: (id: number) => adminApi.promotions.deleteVoucher(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-vouchers'] }),
   });
 
-  const canSubmit = useMemo(
-    () => !!campaignCode.trim() && !!campaignName.trim() && !saveMutation.isPending,
-    [campaignCode, campaignName, saveMutation.isPending]
-  );
+  const [search, setSearch] = useState('');
+  const productSearchQuery = useQuery({
+    queryKey: ['admin-product-search', search],
+    queryFn: () => adminApi.products.adminList({ search, size: 20 }),
+    enabled: activeTab === 'FLASH_SALE' && search.length > 2,
+  });
 
-  const allCampaigns = listQuery.data ?? [];
+  const discountedProductsQuery = useQuery({
+    queryKey: ['admin-discounted-products'],
+    queryFn: () => adminApi.products.adminList({ discounted: true, size: 50 }),
+    enabled: activeTab === 'FLASH_SALE',
+  });
 
-  // KPI stats
-  const now          = Date.now();
-  const activeCount  = useMemo(() => allCampaigns.filter((c) => c.status === 'ACTIVE').length, [allCampaigns]);
-  const upcomingCount = useMemo(
-    () => allCampaigns.filter((c) => c.startsAt && new Date(c.startsAt).getTime() > now).length,
-    [allCampaigns]
-  );
-  const expiredCount = useMemo(
-    () => allCampaigns.filter((c) => c.endsAt && new Date(c.endsAt).getTime() < now).length,
-    [allCampaigns]
-  );
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [dForm, setDForm] = useState({
+    discountPercent: 10,
+    endsAt: '',
+  });
 
-  // Filtered rows
-  const rows = useMemo(() => {
-    let list = allCampaigns;
-    if (filterStatus) list = list.filter((c) => c.status === filterStatus);
-    if (filterType)   list = list.filter((c) => c.campaignType === filterType);
-    return list;
-  }, [allCampaigns, filterStatus, filterType]);
+  const updateDiscountMutation = useMutation({
+    mutationFn: () => {
+      if (!selectedProduct || !selectedProduct.variants?.[0]) throw new Error(t('promotions.voucherHub.flashSale.noProductSelected'));
+      return adminApi.promotions.updateDiscounts({
+        variantIds: selectedProduct.variants.map(v => v.id),
+        discountPercentage: dForm.discountPercent,
+        flashSaleEndsAt: dForm.endsAt ? `${dForm.endsAt}:00` : undefined,
+      });
+    },
+    onSuccess: () => {
+      alert(t('promotions.voucherHub.flashSale.successMessage'));
+      setSelectedProduct(null);
+      queryClient.invalidateQueries({ queryKey: ['admin-product-search'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-discounted-products'] });
+    }
+  });
 
-  const hasFilter = filterStatus || filterType;
+  const formatPrice = (p: number) => p.toLocaleString('vi-VN') + '₫';
 
   return (
     <div className="page">
-
-      {/* ── Delete confirm dialog ── */}
-      {deleteTarget && (
-        <div
-          style={{
-            position: 'fixed', inset: 0, zIndex: 1000,
-            background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
-          onClick={() => setDeleteTarget(null)}
-        >
-          <div className="card" style={{ width: 380, maxWidth: '90vw', margin: 0 }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>Xóa chiến dịch</div>
-            <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 16 }}>
-              <strong>{deleteTarget.campaignName}</strong> (<span className="mono">{deleteTarget.campaignCode}</span>) sẽ bị xóa vĩnh viễn.
-            </div>
-            {deleteMutation.isError && (
-              <div className="inline-alert" style={{ marginBottom: 12 }}>
-                {deleteMutation.error instanceof Error ? deleteMutation.error.message : 'Không thể xóa'}
-              </div>
-            )}
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button className="adm-button adm-button--ghost" type="button" onClick={() => setDeleteTarget(null)}>Hủy</button>
-              <button
-                className="adm-button adm-button--danger"
-                type="button"
-                disabled={deleteMutation.isPending}
-                onClick={() => deleteMutation.mutate(deleteTarget.id)}
-              >
-                {deleteMutation.isPending ? 'Đang xóa…' : 'Xác nhận xóa'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <div className="page__header">
         <div>
-          <div className="page__title">Khuyến mãi</div>
-          <div className="page__subtitle">Tạo và quản lý chiến dịch khuyến mãi</div>
+          <div className="page__title">{t('promotions.voucherHub.title')}</div>
+          <div className="page__subtitle">{t('promotions.voucherHub.subtitle')}</div>
         </div>
-        <button
-          className="adm-button adm-button--primary"
-          type="button"
-          onClick={() => { resetForm(); setShowForm((v) => !v); }}
+      </div>
+
+      {/* TABS */}
+      <div className="flex gap-4 mb-6">
+        <button 
+          onClick={() => setActiveTab('VOUCHERS')}
+          className={`adm-button ${activeTab === 'VOUCHERS' ? 'adm-button--primary' : 'bg-white text-slate-600'}`}
         >
-          {showForm && !editing ? '✕ Đóng' : '+ Tạo chiến dịch'}
+          {t('promotions.voucherHub.tabs.vouchers')}
+        </button>
+        <button 
+          onClick={() => setActiveTab('FLASH_SALE')}
+          className={`adm-button ${activeTab === 'FLASH_SALE' ? 'adm-button--primary' : 'bg-white text-slate-600'}`}
+        >
+          {t('promotions.voucherHub.tabs.flashSale')}
         </button>
       </div>
 
-      {/* ── KPI cards ── */}
-      <div className="grid grid--4">
-        <div className="card">
-          <div className="card__label">Tổng chiến dịch</div>
-          <div className="card__value">{allCampaigns.length}</div>
-          <div className="card__hint">Tất cả trạng thái</div>
-        </div>
-        <div className="card">
-          <div className="card__label">Đang hoạt động</div>
-          <div className="card__value" style={{ color: activeCount > 0 ? 'var(--emerald)' : undefined }}>
-            {activeCount}
-          </div>
-          <div className="card__hint">Status = ACTIVE</div>
-        </div>
-        <div className="card">
-          <div className="card__label">Sắp diễn ra</div>
-          <div className="card__value" style={{ color: upcomingCount > 0 ? 'var(--warn)' : undefined }}>
-            {upcomingCount}
-          </div>
-          <div className="card__hint">Ngày bắt đầu chưa tới</div>
-        </div>
-        <div className="card">
-          <div className="card__label">Đã hết hạn</div>
-          <div className="card__value" style={{ color: expiredCount > 0 ? 'var(--muted)' : undefined }}>
-            {expiredCount}
-          </div>
-          <div className="card__hint">Ngày kết thúc đã qua</div>
-        </div>
-      </div>
-
-      {/* ── Create / Edit form (collapsible) ── */}
-      {showForm && (
-        <div className="card">
-          <div className="card__label">
-            {editing ? `Chỉnh sửa: ${editing.campaignCode}` : 'Tạo chiến dịch mới'}
-          </div>
-          {saveMutation.isError && (
-            <div className="inline-alert">
-              {saveMutation.error instanceof Error ? saveMutation.error.message : 'Không thể lưu'}
-            </div>
-          )}
-          <div className="form-grid">
-            <label className="adm-field">
-              <div className="adm-field__label">Mã chiến dịch</div>
-              <input className="adm-input" value={campaignCode} onChange={(e) => setCampaignCode(e.target.value)} placeholder="PROMO_TET" />
-            </label>
-            <label className="adm-field">
-              <div className="adm-field__label">Tên chiến dịch</div>
-              <input className="adm-input" value={campaignName} onChange={(e) => setCampaignName(e.target.value)} placeholder="Tết Sale" />
-            </label>
-            <label className="adm-field">
-              <div className="adm-field__label">Loại</div>
-              <select className="adm-input" value={campaignType} onChange={(e) => setCampaignType(e.target.value)}>
-                {TYPE_OPTIONS.map((t) => (
-                  <option key={t} value={t}>{TYPE_LABEL[t] ?? t}</option>
-                ))}
-              </select>
-            </label>
-            <label className="adm-field">
-              <div className="adm-field__label">Trạng thái</div>
-              <select className="adm-input" value={status} onChange={(e) => setStatus(e.target.value)}>
-                {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </label>
-            <label className="adm-field">
-              <div className="adm-field__label">Bắt đầu</div>
-              <input className="adm-input" type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} />
-            </label>
-            <label className="adm-field">
-              <div className="adm-field__label">Kết thúc</div>
-              <input className="adm-input" type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} />
-            </label>
-          </div>
-          <div className="row-actions">
-            <button className="adm-button adm-button--ghost" type="button" onClick={() => { resetForm(); setShowForm(false); }}>
-              Hủy
-            </button>
-            <button className="adm-button adm-button--primary" type="button" onClick={() => saveMutation.mutate()} disabled={!canSubmit}>
-              {saveMutation.isPending ? 'Đang lưu…' : editing ? 'Lưu thay đổi' : 'Tạo chiến dịch'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── Filter + Table ── */}
-      <div className="card">
-        {/* Filters */}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16, alignItems: 'flex-end' }}>
-          <label className="adm-field" style={{ minWidth: 160 }}>
-            <div className="adm-field__label">Trạng thái</div>
-            <select className="adm-input" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
-              <option value="">Tất cả</option>
-              {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </label>
-          <label className="adm-field" style={{ minWidth: 180 }}>
-            <div className="adm-field__label">Loại chiến dịch</div>
-            <select className="adm-input" value={filterType} onChange={(e) => setFilterType(e.target.value)}>
-              <option value="">Tất cả</option>
-              {TYPE_OPTIONS.map((t) => <option key={t} value={t}>{TYPE_LABEL[t] ?? t}</option>)}
-            </select>
-          </label>
-          {hasFilter && (
+      {activeTab === 'VOUCHERS' ? (
+        <div className="space-y-6">
+          <div className="flex gap-3">
             <button
-              className="adm-button adm-button--ghost"
               type="button"
-              style={{ alignSelf: 'flex-end' }}
-              onClick={() => { setFilterStatus(''); setFilterType(''); }}
+              onClick={() => switchVoucherPage('NORMAL')}
+              className={`adm-button ${voucherPage === 'NORMAL' ? 'adm-button--primary' : 'bg-white text-slate-600'}`}
             >
-              Xóa lọc
+              Voucher thường
             </button>
-          )}
-          <span className="adm-chip" style={{ alignSelf: 'flex-end' }}>
-            Hiển thị: {rows.length} / {allCampaigns.length}
-          </span>
-        </div>
+            <button
+              type="button"
+              onClick={() => switchVoucherPage('AI')}
+              className={`adm-button ${voucherPage === 'AI' ? 'adm-button--primary' : 'bg-white text-slate-600'}`}
+            >
+              Voucher AI đặc biệt
+            </button>
+          </div>
 
-        {/* Table */}
-        <div className="table-wrap">
-          <table className="adm-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Mã</th>
-                <th>Tên chiến dịch</th>
-                <th>Loại</th>
-                <th>Trạng thái</th>
-                <th>Thời gian thực tế</th>
-                <th>Bắt đầu</th>
-                <th>Kết thúc</th>
-                <th>Thao tác</th>
-              </tr>
-            </thead>
-            <tbody>
-              {listQuery.isLoading ? (
-                <tr><td colSpan={9} className="muted">Đang tải…</td></tr>
-              ) : listQuery.isError ? (
-                <tr><td colSpan={9} className="muted">Không tải được danh sách.</td></tr>
-              ) : rows.length === 0 ? (
-                <tr><td colSpan={9} className="muted">Chưa có dữ liệu</td></tr>
-              ) : (
-                rows.map((c: PromotionCampaign) => {
-                  const ts = timeStatus(c);
-                  return (
-                    <tr key={c.id} style={editing?.id === c.id ? { background: 'rgba(var(--primary-rgb),0.04)' } : undefined}>
-                      <td className="mono">{c.id}</td>
-                      <td className="mono">{c.campaignCode}</td>
-                      <td>{c.campaignName}</td>
+          <div className={`card ${voucherPage === 'AI' ? 'border-l-4 border-l-emerald-500' : ''}`}>
+            <div className="card__label">
+              {voucherPage === 'AI' ? 'Tạo sẵn kho voucher AI đặc biệt' : t('promotions.voucherHub.createVoucherTitle')}
+            </div>
+            {voucherPage === 'AI' ? (
+              <div className="mb-4 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                Voucher AI được admin tạo sẵn, không hiển thị trực tiếp cho user. Khi user hoàn tất đơn hàng từ danh sách gợi ý AI, hệ thống sẽ tự động gán 1 voucher chưa cấp từ kho này để tặng cho user.
+              </div>
+            ) : null}
+            <div className="form-grid">
+              <label className="adm-field">
+                <div className="adm-field__label">{t('promotions.voucherHub.fields.quantity')}</div>
+                <input type="number" className="adm-input" value={vForm.quantity} onChange={e => setVForm({...vForm, quantity: +e.target.value})} />
+              </label>
+              <label className="adm-field">
+                <div className="adm-field__label">{t('promotions.voucherHub.fields.prefix')}</div>
+                <input className="adm-input" value={vForm.prefix} onChange={e => setVForm({...vForm, prefix: e.target.value.toUpperCase()})} />
+              </label>
+              <label className="adm-field">
+                <div className="adm-field__label">{t('promotions.voucherHub.fields.discountType')}</div>
+                <select className="adm-input" value={vForm.discountType} onChange={e => setVForm({...vForm, discountType: e.target.value as any})}>
+                  <option value="FIXED_AMOUNT">{t('promotions.voucherHub.fields.fixedAmount')}</option>
+                  <option value="PERCENT">{t('promotions.voucherHub.fields.percent')}</option>
+                </select>
+              </label>
+              <label className="adm-field">
+                <div className="adm-field__label">{t('promotions.voucherHub.fields.discountValue')}</div>
+                <input type="number" className="adm-input" value={vForm.discountValue} onChange={e => setVForm({...vForm, discountValue: +e.target.value})} />
+              </label>
+              <label className="adm-field">
+                <div className="adm-field__label">{t('promotions.voucherHub.fields.minOrderAmount')}</div>
+                <input type="number" className="adm-input" value={vForm.minOrderAmount} onChange={e => setVForm({...vForm, minOrderAmount: +e.target.value})} />
+              </label>
+              <label className="adm-field">
+                <div className="adm-field__label">{t('promotions.voucherHub.fields.validUntil')}</div>
+                <input type="datetime-local" className="adm-input" value={vForm.validUntil} onChange={e => setVForm({...vForm, validUntil: e.target.value})} />
+              </label>
+              <label className="adm-field">
+                <div className="adm-field__label">Chế độ hiển thị</div>
+                <input
+                  className="adm-input"
+                  value={voucherPage === 'AI' ? 'Voucher AI ẩn' : 'Voucher thường công khai'}
+                  disabled
+                />
+              </label>
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button 
+                className="adm-button adm-button--primary" 
+                onClick={() => generateVouchersMutation.mutate()}
+                disabled={generateVouchersMutation.isPending}
+              >
+                {generateVouchersMutation.isPending ? t('promotions.voucherHub.actions.generating') : t('promotions.voucherHub.actions.generate')}
+              </button>
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="table-wrap">
+              <table className="adm-table">
+                <thead>
+                  <tr>
+                    <th>{t('promotions.voucherHub.table.code')}</th>
+                    <th>{t('promotions.voucherHub.table.type')}</th>
+                    <th>{t('promotions.voucherHub.table.value')}</th>
+                    <th>{t('promotions.voucherHub.table.minOrder')}</th>
+                    <th>{t('promotions.voucherHub.table.used')}</th>
+                    <th>{t('promotions.voucherHub.table.expiry')}</th>
+                    <th>Hiển thị</th>
+                    <th>{t('promotions.voucherHub.table.actions')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleVouchers.map(v => (
+                    <tr key={v.id}>
+                      <td className="font-bold text-emerald-600 font-mono">{v.voucherCode}</td>
+                      <td>{v.discountType === 'FIXED_AMOUNT' ? t('promotions.voucherHub.fields.fixedAmount') : t('promotions.voucherHub.fields.percent')}</td>
+                      <td className="font-bold">{v.discountType === 'FIXED_AMOUNT' ? formatPrice(v.discountValue) : v.discountValue + '%'}</td>
+                      <td>{formatPrice(v.minOrderAmount || 0)}</td>
+                      <td>{v.usedCount} / {v.usageLimitPerVoucher}</td>
+                      <td className="font-mono">{v.validUntil ? new Date(v.validUntil).toLocaleDateString('vi-VN') : '-'}</td>
                       <td>
-                        <span className={`adm-badge ${TYPE_BADGE[c.campaignType] ?? 'adm-badge--muted'}`}>
-                          {TYPE_LABEL[c.campaignType] ?? c.campaignType}
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${v.hidden ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-slate-100 text-slate-600'}`}>
+                          {v.hidden ? (v.assignedUserId ? 'Đã cấp cho user' : 'Trong kho AI') : 'Công khai'}
                         </span>
+                        {v.assignedUserId ? <div className="text-[11px] text-slate-500 mt-1">User #{v.assignedUserId}</div> : null}
                       </td>
                       <td>
-                        <span className={`adm-badge ${STATUS_BADGE[c.status] ?? 'adm-badge--muted'}`}>
-                          {c.status}
-                        </span>
-                      </td>
-                      <td>
-                        {ts
-                          ? <span className={`adm-badge ${ts.cls}`}>{ts.label}</span>
-                          : <span className="muted">—</span>
-                        }
-                      </td>
-                      <td className="mono">{fmtDate(c.startsAt)}</td>
-                      <td className="mono">{fmtDate(c.endsAt)}</td>
-                      <td className="cell-actions">
-                        <button className="adm-button adm-button--ghost" type="button" onClick={() => startEdit(c)}>
-                          Sửa
-                        </button>
-                        <button
-                          className="adm-button adm-button--ghost"
-                          type="button"
-                          style={{ color: 'var(--danger)' }}
-                          onClick={() => setDeleteTarget(c)}
+                        <button 
+                          className="text-red-500 hover:underline"
+                          onClick={() => {
+                            if (confirm(t('common.deactivate'))) deleteVoucherMutation.mutate(v.id);
+                          }}
                         >
-                          Xóa
+                          {t('promotions.voucherHub.actions.delete')}
                         </button>
                       </td>
                     </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                  ))}
+                  {visibleVouchers.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="text-center py-10 text-slate-400">
+                        {voucherPage === 'AI' ? 'Chưa có voucher AI đặc biệt nào trong kho.' : 'Chưa có voucher thường nào.'}
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="space-y-6">
+          <div className="card border-l-4 border-l-amber-500">
+            <div className="card__label">{t('promotions.voucherHub.flashSale.title')}</div>
+            <div className="adm-field mb-4">
+              <div className="adm-field__label">{t('promotions.voucherHub.flashSale.searchPlaceholder')}</div>
+              <input 
+                className="adm-input" 
+                placeholder={t('promotions.voucherHub.flashSale.searchHint')} 
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+              />
+            </div>
+
+            {productSearchQuery.data?.content && (
+              <div className="grid grid-cols-2 gap-2 mb-4 max-h-60 overflow-y-auto p-2 bg-slate-50 rounded-lg shadow-inner">
+                {productSearchQuery.data.content.map(p => (
+                  <div 
+                    key={p.id} 
+                    onClick={() => setSelectedProduct(p)}
+                    className={`p-3 rounded-xl cursor-pointer flex items-center border transition-all ${selectedProduct?.id === p.id ? 'border-amber-500 bg-amber-50 shadow-sm' : 'border-slate-200 bg-white hover:border-amber-300'}`}
+                  >
+                    {p.image && <img src={p.image} className="w-10 h-10 rounded-md mr-3 object-cover shadow-sm" />}
+                    <div className="flex-1 overflow-hidden">
+                      <div className="text-sm font-bold truncate">{p.name}</div>
+                      <div className="text-xs text-slate-500">{t('promotions.voucherHub.flashSale.selectedHint')} {formatPrice(p.variants?.[0]?.netPrice || 0)}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {selectedProduct && (
+              <div className="form-grid mt-4 p-4 bg-amber-50/30 rounded-2xl border border-amber-100/50">
+                <label className="adm-field">
+                  <div className="adm-field__label">{t('promotions.voucherHub.flashSale.discountPercent')}</div>
+                  <input 
+                    type="number" 
+                    className="adm-input" 
+                    value={dForm.discountPercent} 
+                    onChange={e => setDForm({...dForm, discountPercent: +e.target.value})} 
+                  />
+                </label>
+                <label className="adm-field">
+                  <div className="adm-field__label">{t('promotions.voucherHub.flashSale.endsAt')}</div>
+                  <input 
+                    type="datetime-local" 
+                    className="adm-input" 
+                    value={dForm.endsAt} 
+                    onChange={e => setDForm({...dForm, endsAt: e.target.value})} 
+                  />
+                </label>
+              </div>
+            )}
+
+            <div className="mt-4 flex justify-end">
+              <button 
+                className="adm-button adm-button--primary bg-amber-600 border-amber-600 hover:bg-amber-700" 
+                onClick={() => updateDiscountMutation.mutate()}
+                disabled={!selectedProduct || updateDiscountMutation.isPending}
+              >
+                {updateDiscountMutation.isPending ? t('promotions.voucherHub.actions.updating') : t('promotions.voucherHub.actions.applyDiscount')}
+              </button>
+            </div>
+          </div>
+
+          {/* LIST OF CURRENTLY DISCOUNTED PRODUCTS */}
+          <div className="card">
+            <div className="card__label">Sản phẩm đang khuyến mãi</div>
+            <div className="table-wrap">
+              <table className="adm-table">
+                <thead>
+                  <tr>
+                    <th>Sản phẩm</th>
+                    <th>Giá gốc</th>
+                    <th>Giá KM</th>
+                    <th>Giảm (%)</th>
+                    <th>Hết hạn</th>
+                    <th>Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {discountedProductsQuery.data?.content?.map(p => {
+                    const variant = p.variants?.[0];
+                    const discount = variant?.compareAtPrice && variant.compareAtPrice > 0 
+                      ? Math.round((1 - (variant.netPrice || 0) / variant.compareAtPrice) * 100)
+                      : 0;
+                    
+                    return (
+                      <tr key={p.id}>
+                        <td className="flex items-center py-3">
+                          {p.image && <img src={p.image} className="w-8 h-8 rounded mr-3" />}
+                          <div>
+                            <div className="font-bold">{p.name}</div>
+                            <div className="text-xs text-slate-500 font-mono">{variant?.sku}</div>
+                          </div>
+                        </td>
+                        <td className="line-through text-slate-400">{formatPrice(variant?.compareAtPrice || 0)}</td>
+                        <td className="text-emerald-600 font-bold">{formatPrice(variant?.netPrice || 0)}</td>
+                        <td>
+                          <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full text-xs font-bold">
+                            -{discount}%
+                          </span>
+                        </td>
+                        <td className="font-mono text-xs">
+                          {variant?.flashSaleEndsAt ? new Date(variant.flashSaleEndsAt).toLocaleDateString('vi-VN') : '-'}
+                        </td>
+                        <td>
+                          <button 
+                            className="text-amber-600 hover:underline"
+                            onClick={() => {
+                              setSelectedProduct(p);
+                              setDForm({ ...dForm, discountPercent: discount });
+                              window.scrollTo({ top: 0, behavior: 'smooth' });
+                            }}
+                          >
+                            Sửa
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {(!discountedProductsQuery.data?.content || discountedProductsQuery.data.content.length === 0) && (
+                    <tr>
+                      <td colSpan={6} className="text-center py-10 text-slate-400">Không có sản phẩm nào đang giảm giá.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

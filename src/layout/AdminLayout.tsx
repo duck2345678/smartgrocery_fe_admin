@@ -1,7 +1,6 @@
 import React from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { BookText, Boxes, BrainCircuit, CalendarClock, ChevronLeft, ChevronRight, ClipboardList, LayoutDashboard, LogOut, Moon, Package, Percent, Store, Sun, User, Users } from 'lucide-react';
-
+import { BookText, Boxes, BrainCircuit, CalendarClock, ChevronLeft, ChevronRight, ClipboardList, LayoutDashboard, LogOut, Moon, Package, Store, Sun, User, Users, Contact, Ticket } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../store/authStore';
 import { getAdminLanguage, setAdminLanguage } from '../i18n';
@@ -12,14 +11,11 @@ type AdminTheme = 'dark' | 'light';
 const navItems: Array<{ to: string; labelKey: string; icon: React.ReactNode }> = [
   { to: '/', labelKey: 'nav.dashboard', icon: <LayoutDashboard size={18} /> },
   { to: '/catalog/categories', labelKey: 'nav.categories', icon: <Boxes size={18} /> },
-  { to: '/catalog/products', labelKey: 'nav.products', icon: <Package size={18} /> },
-  { to: '/supply/inventory', labelKey: 'nav.inventory', icon: <Store size={18} /> },
+  { to: '/products', labelKey: 'nav.products', icon: <Package size={18} /> },
   { to: '/supply/purchase-orders', labelKey: 'nav.purchaseOrders', icon: <ClipboardList size={18} /> },
-  { to: '/supply/promotions', labelKey: 'nav.promotions', icon: <Percent size={18} /> },
-  { to: '/users', labelKey: 'nav.users', icon: <Users size={18} /> },
-  { to: '/staff-management', labelKey: 'nav.staffManagement', icon: <CalendarClock size={18} /> },
-  { to: '/issues', labelKey: 'nav.issues', icon: <BookText size={18} /> },
-  { to: '/ai-health', labelKey: 'nav.aiHealth', icon: <BrainCircuit size={18} /> },
+  { to: '/promotions', labelKey: 'nav.promotions', icon: <Ticket size={18} /> },
+  { to: '/customers', labelKey: 'nav.customers', icon: <Users size={18} /> },
+  { to: '/staff-list', labelKey: 'nav.staff', icon: <Contact size={18} /> },
   { to: '/profile', labelKey: 'nav.profile', icon: <User size={18} /> },
 ];
 
@@ -113,7 +109,7 @@ export function AdminLayout() {
 
       <main className="adm-main">
         <header className="adm-header">
-          <div className="adm-header__title">{t('common.commandCenter')}</div>
+          <div className="adm-header__title"></div>
           <div className="adm-header__right">
             <button
               className="adm-button adm-button--ghost"
@@ -122,7 +118,6 @@ export function AdminLayout() {
               title={t('common.theme')}
             >
               {theme === 'dark' ? <Moon size={16} /> : <Sun size={16} />}
-              <span>{theme === 'dark' ? t('common.themeDark') : t('common.themeLight')}</span>
             </button>
 
             <button

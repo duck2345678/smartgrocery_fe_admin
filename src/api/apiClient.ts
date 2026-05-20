@@ -1,5 +1,6 @@
 import axios, { AxiosError, AxiosHeaders, type InternalAxiosRequestConfig } from 'axios';
 import { useAuthStore } from '../store/authStore';
+import { getDeviceFingerprint } from '../utils/deviceFingerprint';
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080';
 
@@ -17,8 +18,14 @@ const refreshInternalToken = async (): Promise<string | null> => {
     const refreshToken = useAuthStore.getState().refreshToken;
     if (!refreshToken) throw new Error('No refresh token');
 
+    const deviceFingerprint = getDeviceFingerprint();
+
     // Use a clean axios instance to avoid interceptor loop
-    const response = await axios.post(`${API_URL}/api/v1/auth/refresh`, { refreshToken });
+    const response = await axios.post(
+      `${API_URL}/api/v1/auth/refresh`,
+      { refreshToken },
+      { headers: { 'X-Device-Fingerprint': deviceFingerprint } },
+    );
 
     const { token: newAccessToken, refreshToken: newRefreshToken, user } = response.data.data;
     useAuthStore.getState().setTokens(newAccessToken, newRefreshToken);
@@ -58,16 +65,20 @@ const extractMessage = (data: unknown): string | null => {
 
 apiClient.interceptors.request.use((config) => {
   const token = useAuthStore.getState().token;
+  const deviceFingerprint = getDeviceFingerprint();
+  const headers = AxiosHeaders.from(config.headers);
   if (token) {
-    const headers = AxiosHeaders.from(config.headers);
     headers.set('Authorization', `Bearer ${token}`);
-    config.headers = headers;
   }
+  headers.set('X-Device-Fingerprint', deviceFingerprint);
+  config.headers = headers;
+  console.debug('API request', { method: config.method, url: config.url, headers: headers.toJSON() });
   return config;
 });
 
 apiClient.interceptors.response.use(
   (response) => {
+    console.debug('API response', { status: response.status, data: response.data });
     const payload = response.data;
     // Standardized unwrapping
     if (payload && typeof payload === 'object' && 'data' in payload) {
@@ -117,8 +128,18 @@ apiClient.interceptors.response.use(
       }
     }
 
+    console.error('API error', {
+      message: error.message,
+      url: error.config?.url,
+      status: error.response?.status,
+      data: error.response?.data,
+    });
+
     // Extract message from Backend GlobalExceptionHandler
     const message = extractMessage(error.response?.data) || 'Đã có lỗi xảy ra';
-    return Promise.reject(new Error(message));
+    if (error.response) {
+      error.message = message;
+    }
+    return Promise.reject(error);
   }
 );

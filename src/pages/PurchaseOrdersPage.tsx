@@ -70,7 +70,7 @@ export function PurchaseOrdersPage() {
     const opt = productOptions.find((o) => o.variantId === variantId);
     setItems((arr) =>
       arr.map((x, i) =>
-        i === idx ? { ...x, variantId, unitPrice: opt?.price ? String(opt.price) : x.unitPrice } : x
+        i === idx ? { ...x, variantId, unitPrice: opt?.price ? String(Math.round(opt.price * 0.7)) : x.unitPrice } : x
       )
     );
     setProductSearch((prev) => ({ ...prev, [idx]: '' }));
@@ -167,13 +167,6 @@ export function PurchaseOrdersPage() {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button
-            className="adm-button adm-button--ghost"
-            type="button"
-            onClick={() => setShowSuppliers((v) => !v)}
-          >
-            Nhà cung cấp{supplierCount > 0 ? ` (${supplierCount})` : ''}
-          </button>
-          <button
             className="adm-button adm-button--primary"
             type="button"
             onClick={() => { resetForm(); setShowForm((v) => !v); }}
@@ -211,103 +204,7 @@ export function PurchaseOrdersPage() {
         </div>
       </div>
 
-      {/* ── Supplier management panel (collapsible) ── */}
-      {showSuppliers && (
-        <div className="card">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-            <div className="card__label">Nhà cung cấp</div>
-            <button
-              className="adm-button adm-button--ghost"
-              type="button"
-              onClick={() => { setShowAddSupplier((v) => !v); resetSupplierForm(); }}
-            >
-              {showAddSupplier ? '✕ Hủy' : '+ Thêm nhà cung cấp'}
-            </button>
-          </div>
 
-          {/* Add supplier form */}
-          {showAddSupplier && (
-            <div style={{
-              padding: 16, marginBottom: 16,
-              background: 'var(--bg)',
-              border: '1px solid var(--border)',
-              borderRadius: 10,
-            }}>
-              {createSupplierMutation.isError && (
-                <div className="inline-alert" style={{ marginBottom: 12 }}>
-                  {createSupplierMutation.error instanceof Error
-                    ? createSupplierMutation.error.message
-                    : 'Không thể thêm nhà cung cấp'}
-                </div>
-              )}
-              <div className="form-grid">
-                <label className="adm-field">
-                  <div className="adm-field__label">Tên nhà cung cấp *</div>
-                  <input className="adm-input" value={sName} onChange={(e) => setSName(e.target.value)} placeholder="Nông Trại Xanh" />
-                </label>
-                <label className="adm-field">
-                  <div className="adm-field__label">Người liên hệ</div>
-                  <input className="adm-input" value={sContact} onChange={(e) => setSContact(e.target.value)} placeholder="Anh Minh" />
-                </label>
-                <label className="adm-field">
-                  <div className="adm-field__label">Số điện thoại</div>
-                  <input className="adm-input" type="tel" value={sPhone} onChange={(e) => setSPhone(e.target.value)} placeholder="0900 123 456" />
-                </label>
-                <label className="adm-field">
-                  <div className="adm-field__label">Email</div>
-                  <input className="adm-input" type="email" value={sEmail} onChange={(e) => setSEmail(e.target.value)} placeholder="(tùy chọn)" />
-                </label>
-                <label className="adm-field" style={{ gridColumn: '1 / -1' }}>
-                  <div className="adm-field__label">Địa chỉ</div>
-                  <input className="adm-input" value={sAddress} onChange={(e) => setSAddress(e.target.value)} placeholder="(tùy chọn)" />
-                </label>
-              </div>
-              <div className="row-actions" style={{ marginTop: 12 }}>
-                <button
-                  className="adm-button adm-button--primary"
-                  type="button"
-                  disabled={!sName.trim() || createSupplierMutation.isPending}
-                  onClick={() => createSupplierMutation.mutate()}
-                >
-                  {createSupplierMutation.isPending ? 'Đang lưu…' : 'Lưu nhà cung cấp'}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Supplier list */}
-          <div className="table-wrap">
-            <table className="adm-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Tên</th>
-                  <th>Người liên hệ</th>
-                  <th>SĐT</th>
-                  <th>Email</th>
-                </tr>
-              </thead>
-              <tbody>
-                {suppliersQuery.isLoading ? (
-                  <tr><td colSpan={5} className="muted">Đang tải…</td></tr>
-                ) : (suppliersQuery.data ?? []).length === 0 ? (
-                  <tr><td colSpan={5} className="muted">Chưa có nhà cung cấp nào</td></tr>
-                ) : (
-                  (suppliersQuery.data ?? []).map((s: Supplier) => (
-                    <tr key={s.id}>
-                      <td className="mono">{s.id}</td>
-                      <td>{s.name}</td>
-                      <td>{s.contactPerson ?? <span className="muted">—</span>}</td>
-                      <td className="mono">{s.phone ?? <span className="muted">—</span>}</td>
-                      <td className="mono">{s.email ?? <span className="muted">—</span>}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
 
       {/* ── Create PO form (collapsible) ── */}
       {showForm && (
@@ -319,19 +216,7 @@ export function PurchaseOrdersPage() {
             </div>
           )}
 
-          <div style={{ marginBottom: 16 }}>
-            <label className="adm-field" style={{ maxWidth: 360 }}>
-              <div className="adm-field__label">Nhà cung cấp (tuỳ chọn)</div>
-              <select className="adm-input" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
-                <option value="">— Không chọn —</option>
-                {(suppliersQuery.data ?? []).map((s: Supplier) => (
-                  <option key={s.id} value={String(s.id)}>
-                    {s.name}{s.contactPerson ? ` · ${s.contactPerson}` : ''}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+
 
           <div className="table-wrap">
             <table className="adm-table">
@@ -373,18 +258,33 @@ export function PurchaseOrdersPage() {
                             />
                             {(productSearch[idx] ?? '').length > 0 && (
                               <div style={{
-                                position: 'absolute', zIndex: 50, top: '100%', left: 0, right: 0,
+                                position: 'absolute', zIndex: 50, bottom: 'calc(100% + 6px)', left: 0,
+                                minWidth: 450,
                                 background: 'var(--panel)', border: '1px solid var(--border)',
                                 borderRadius: 8, maxHeight: 200, overflowY: 'auto',
+                                boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.1)',
                               }}>
                                 {filteredOptions(idx).length === 0 ? (
                                   <div className="muted" style={{ padding: '0.5rem 0.75rem' }}>Không tìm thấy</div>
                                 ) : filteredOptions(idx).map((opt) => (
                                   <div
                                     key={opt.variantId}
-                                    style={{ padding: '0.5rem 0.75rem', cursor: 'pointer' }}
+                                    style={{
+                                      padding: '8px 12px',
+                                      cursor: 'pointer',
+                                      fontSize: '0.85rem',
+                                      transition: 'background 0.2s',
+                                      color: 'var(--fg)',
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      e.currentTarget.style.background = 'rgba(22, 163, 74, 0.15)';
+                                      e.currentTarget.style.color = 'var(--primary)';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      e.currentTarget.style.background = 'transparent';
+                                      e.currentTarget.style.color = 'var(--fg)';
+                                    }}
                                     onMouseDown={() => selectVariant(idx, opt.variantId)}
-                                    className="muted"
                                   >
                                     {opt.label}
                                   </div>
@@ -433,7 +333,7 @@ export function PurchaseOrdersPage() {
             </table>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, flexWrap: 'wrap', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 24, flexWrap: 'wrap', gap: 8 }}>
             <button
               className="adm-button adm-button--ghost"
               type="button"
@@ -476,7 +376,6 @@ export function PurchaseOrdersPage() {
               <tr>
                 <th>ID</th>
                 <th>Mã PO</th>
-                <th>Nhà cung cấp</th>
                 <th>Trạng thái</th>
                 <th>Tổng tiền</th>
                 <th>Tạo lúc</th>
@@ -499,7 +398,6 @@ export function PurchaseOrdersPage() {
                     <tr key={po.id}>
                       <td className="mono">{po.id}</td>
                       <td className="mono">{po.poNumber ?? '—'}</td>
-                      <td>{po.supplierName ?? <span className="muted">—</span>}</td>
                       <td>
                         <span className={`adm-badge ${PO_STATUS_BADGE[statusKey] ?? 'adm-badge--muted'}`}>
                           {po.status ?? '—'}
