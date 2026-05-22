@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { BookText, Boxes, BrainCircuit, CalendarClock, ChevronLeft, ChevronRight, ClipboardList, LayoutDashboard, LogOut, Moon, Package, Store, Sun, User, Users, Contact, Ticket } from 'lucide-react';
+import { Boxes, ChevronLeft, ChevronRight, ClipboardList, LayoutDashboard, LogOut, Moon, Package, Sun, User, Users, Contact, Ticket } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../store/authStore';
 import { getAdminLanguage, setAdminLanguage } from '../i18n';
