@@ -58,19 +58,19 @@ export function AuditLogsPage() {
           <div className="filters__row">
             <label className="adm-field">
               <div className="adm-field__label">{t('auditLogs.actorId')}</div>
-              <input className="adm-input" value={actorId} onChange={(e) => setActorId(e.target.value)} placeholder="123" />
+              <input className="adm-input" value={actorId} onChange={(e) => setActorId(e.target.value)} placeholder="ID người thực hiện, VD: 123" />
             </label>
             <label className="adm-field">
               <div className="adm-field__label">{t('auditLogs.actionType')}</div>
-              <input className="adm-input" value={actionType} onChange={(e) => setActionType(e.target.value)} placeholder="FORCE_RELEASE" />
+              <input className="adm-input" value={actionType} onChange={(e) => setActionType(e.target.value)} placeholder="VD: FORCE_RELEASE, UPDATE_STOCK" />
             </label>
             <label className="adm-field">
               <div className="adm-field__label">{t('auditLogs.entityType')}</div>
-              <input className="adm-input" value={entityType} onChange={(e) => setEntityType(e.target.value)} placeholder="ORDER" />
+              <input className="adm-input" value={entityType} onChange={(e) => setEntityType(e.target.value)} placeholder="VD: ORDER, PRODUCT, USER" />
             </label>
             <label className="adm-field">
               <div className="adm-field__label">{t('auditLogs.entityId')}</div>
-              <input className="adm-input" value={entityId} onChange={(e) => setEntityId(e.target.value)} placeholder="456" />
+              <input className="adm-input" value={entityId} onChange={(e) => setEntityId(e.target.value)} placeholder="ID đối tượng, VD: 456" />
             </label>
           </div>
 

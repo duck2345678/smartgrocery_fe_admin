@@ -2,10 +2,12 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { adminApi, type AdminUser, type AdminShiftRequestItemDto } from '../api/adminApi';
-import { 
+import {
   UserPlus, Search, Edit, Ban, CheckCircle, XCircle,
-  ClipboardCheck, BarChart2, User as UserIcon
+  ClipboardCheck, BarChart2, User as UserIcon,
+  Clock, UserX, LogOut, Calendar,
 } from 'lucide-react';
+import type { AttendanceRankingItem } from '../api/adminApi';
 
 const isStrongPassword = (p: string) => p.length >= 8 && /[A-Za-z]/.test(p) && /\d/.test(p);
 
@@ -349,43 +351,165 @@ export function StaffPage() {
 
       {/* Tab: Attendance Analytics */}
       {activeTab === 'attendance' && (
-        <div className="grid">
-          <div className="grid grid--3">
-            <div className="card">
-              <div className="card__label">Tổng nhân viên</div>
-              <div className="card__value">{attendanceInsightsQuery.data?.totalStaff || 0}</div>
-              <div className="card__hint">Đã đăng ký tài khoản</div>
-            </div>
-            <div className="card">
-              <div className="card__label">Đang trực hôm nay</div>
-              <div className="card__value" style={{ color: 'var(--ok)' }}>{attendanceInsightsQuery.data?.activeToday || 0}</div>
-              <div className="card__hint">Đã bấm Check-in</div>
-            </div>
-            <div className="card">
-              <div className="card__label">Yêu cầu chờ duyệt</div>
-              <div className="card__value" style={{ color: (attendanceInsightsQuery.data?.pendingRequests || 0) > 0 ? 'var(--danger)' : 'inherit' }}>
-                {attendanceInsightsQuery.data?.pendingRequests || 0}
-              </div>
-              <div className="card__hint">Đơn đăng ký ca</div>
-            </div>
-          </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {attendanceInsightsQuery.isLoading ? (
+            <div className="card"><div className="muted">Đang tải thống kê…</div></div>
+          ) : attendanceInsightsQuery.isError ? (
+            <div className="card"><div className="muted" style={{ color: 'var(--danger)' }}>Không thể tải dữ liệu chấm công.</div></div>
+          ) : (() => {
+            const d = attendanceInsightsQuery.data;
+            const now = new Date();
+            const monthLabel = `Tháng ${now.getMonth() + 1}/${now.getFullYear()}`;
 
-          <div className="card" style={{ marginTop: 15 }}>
-            <div className="card__label">Bảng xếp hạng hiệu suất (Tháng này)</div>
-            <div className="list">
-              {attendanceInsightsQuery.data?.topPerformers.map((p, idx) => (
-                <div key={p.userId} className="list__row" style={{ alignItems: 'center' }}>
-                  <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                    <div className="adm-user__avatar" style={{ width: 28, height: 28, fontSize: 10 }}>{idx + 1}</div>
-                    <div style={{ fontWeight: 600 }}>{p.name}</div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 15, alignItems: 'center' }}>
-                    <div style={{ fontSize: 12 }}>Chỉ số chuyên cần: <span style={{ fontWeight: 700, color: 'var(--primary)' }}>{p.score}%</span></div>
+            const RankingTable = ({ title, icon, items, countKey, countLabel, accentColor }: {
+              title: string; icon: React.ReactNode;
+              items: AttendanceRankingItem[];
+              countKey: keyof AttendanceRankingItem;
+              countLabel: string;
+              accentColor: string;
+            }) => (
+              <div style={{
+                background: 'var(--panel)', borderRadius: 'var(--radius-lg)',
+                border: '1px solid var(--border)',
+                boxShadow: '0 2px 12px -4px rgba(60,20,80,0.07)',
+                overflow: 'hidden', flex: 1,
+              }}>
+                <div style={{
+                  padding: '13px 16px 11px',
+                  borderBottom: '1px solid var(--border)',
+                  display: 'flex', alignItems: 'center', gap: 9,
+                }}>
+                  <div style={{
+                    width: 28, height: 28, borderRadius: 8, flexShrink: 0,
+                    background: `${accentColor}18`, color: accentColor,
+                    display: 'grid', placeItems: 'center',
+                  }}>{icon}</div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 13 }}>{title}</div>
+                    <div style={{ fontSize: 11, color: 'var(--muted)' }}>{monthLabel}</div>
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
+                <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {(items ?? []).length === 0 ? (
+                    <div className="muted" style={{ fontSize: 12 }}>Không có dữ liệu</div>
+                  ) : (items ?? []).slice(0, 5).map((item, idx) => (
+                    <div key={item.userId} style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '7px 10px', borderRadius: 10,
+                      background: idx === 0 ? `${accentColor}0d` : 'var(--panel-2)',
+                      border: `1px solid ${idx === 0 ? `${accentColor}30` : 'var(--border)'}`,
+                    }}>
+                      <div style={{
+                        width: 22, height: 22, borderRadius: 6, flexShrink: 0,
+                        background: idx === 0 ? accentColor : 'var(--border)',
+                        color: idx === 0 ? '#fff' : 'var(--muted)',
+                        display: 'grid', placeItems: 'center',
+                        fontSize: 11, fontWeight: 800,
+                      }}>{idx + 1}</div>
+                      <div style={{ flex: 1, fontSize: 13, fontWeight: 600, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {item.userFullName}
+                      </div>
+                      <span style={{
+                        fontSize: 11, fontWeight: 700, padding: '2px 8px',
+                        borderRadius: 99, whiteSpace: 'nowrap',
+                        background: `${accentColor}18`, color: accentColor,
+                      }}>
+                        {String(item[countKey])} {countLabel}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+
+            return (
+              <>
+                {/* Summary bar */}
+                <div style={{
+                  background: 'linear-gradient(135deg, #10b981 0%, #0ea5e9 100%)',
+                  borderRadius: 'var(--radius-lg)', padding: '16px 22px',
+                  color: '#fff', display: 'flex', alignItems: 'center', gap: 16,
+                  boxShadow: '0 4px 20px -4px rgba(16,185,129,0.35)',
+                }}>
+                  <Calendar size={20} strokeWidth={2.5} style={{ opacity: 0.9 }} />
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 800 }}>Thống kê Chấm công — {monthLabel}</div>
+                    <div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>
+                      {(d?.chartPoints ?? []).length} ngày có dữ liệu · {(d?.lateRanking ?? []).length} nhân viên trong bảng xếp hạng
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3 ranking tables */}
+                <div style={{ display: 'flex', gap: 16 }}>
+                  <RankingTable
+                    title="Đi trễ nhiều nhất"
+                    icon={<Clock size={14} />}
+                    items={d?.lateRanking ?? []}
+                    countKey="lateCount"
+                    countLabel="lần"
+                    accentColor="var(--danger)"
+                  />
+                  <RankingTable
+                    title="Vắng mặt nhiều nhất"
+                    icon={<UserX size={14} />}
+                    items={d?.absentRanking ?? []}
+                    countKey="absentCount"
+                    countLabel="ngày"
+                    accentColor="var(--warn)"
+                  />
+                  <RankingTable
+                    title="Về sớm nhiều nhất"
+                    icon={<LogOut size={14} />}
+                    items={d?.earlyRanking ?? []}
+                    countKey="earlyCount"
+                    countLabel="lần"
+                    accentColor="var(--purple)"
+                  />
+                </div>
+
+                {/* Chart points table */}
+                {(d?.chartPoints ?? []).length > 0 && (
+                  <div style={{
+                    background: 'var(--panel)', borderRadius: 'var(--radius-lg)',
+                    border: '1px solid var(--border)',
+                    boxShadow: '0 2px 12px -4px rgba(60,20,80,0.07)',
+                    overflow: 'hidden',
+                  }}>
+                    <div style={{ padding: '13px 16px 11px', borderBottom: '1px solid var(--border)', fontWeight: 700, fontSize: 13 }}>
+                      Chi tiết theo ngày
+                    </div>
+                    <div className="table-wrap">
+                      <table className="adm-table">
+                        <thead>
+                          <tr>
+                            <th>Ngày</th>
+                            <th>Blocks hoàn thành</th>
+                            <th>Giờ làm</th>
+                            <th>Trạng thái</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(d?.chartPoints ?? []).slice(-14).reverse().map((cp) => (
+                            <tr key={cp.date}>
+                              <td className="mono">{new Date(cp.date).toLocaleDateString('vi-VN')}</td>
+                              <td>{cp.completedBlocks}/{cp.scheduledBlocks}</td>
+                              <td>{Math.round(cp.workedMinutes / 60 * 10) / 10}h / {Math.round(cp.scheduledMinutes / 60 * 10) / 10}h</td>
+                              <td>
+                                {cp.late && <span style={{ color: 'var(--danger)', fontSize: 11, fontWeight: 600, marginRight: 6 }}>⚠ Trễ</span>}
+                                {cp.early && <span style={{ color: 'var(--warn)', fontSize: 11, fontWeight: 600, marginRight: 6 }}>⚠ Về sớm</span>}
+                                {!cp.late && !cp.early && <span style={{ color: 'var(--ok)', fontSize: 11, fontWeight: 600 }}>✓ Đúng giờ</span>}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </div>
       )}
     </div>

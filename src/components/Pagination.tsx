@@ -28,7 +28,7 @@ const btnBase: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
   minWidth: 34, height: 34, padding: '0 6px',
   borderRadius: 8, border: '1px solid var(--border)',
-  background: 'transparent', color: 'var(--fg)',
+  background: 'transparent', color: 'var(--text)',
   fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 400,
   cursor: 'pointer', transition: 'all 150ms ease',
   userSelect: 'none',
@@ -72,7 +72,7 @@ export function Pagination({
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         {totalElements != null && (
           <span style={{ fontSize: 12, color: 'var(--muted)' }}>
-            Tổng: <strong style={{ color: 'var(--fg)' }}>{totalElements.toLocaleString('vi-VN')}</strong> bản ghi
+            Tổng: <strong style={{ color: 'var(--text)' }}>{totalElements.toLocaleString('vi-VN')}</strong> bản ghi
           </span>
         )}
         {onSizeChange && (

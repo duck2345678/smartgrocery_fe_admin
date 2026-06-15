@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, Eye, EyeOff, Plus, RotateCcw, Save, Search, Trash2, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { adminApi, type Category, type Product, type ProductVariantPayload } from '../api/adminApi';
+import { Pagination } from '../components/Pagination';
 
 type ProductStatus = 'ACTIVE' | 'HIDDEN' | 'DELETED';
 
@@ -435,11 +436,11 @@ export function ProductsPage() {
             <div className="form-grid">
               <label className="adm-field">
                 <div className="adm-field__label">{t('fields.productCode')}</div>
-                <input className="adm-input" value={productCode} onChange={(e) => setProductCode(e.target.value)} placeholder="P_BANANA" />
+                <input className="adm-input" value={productCode} onChange={(e) => setProductCode(e.target.value)} placeholder="VD: P_CHUOI, P_CAM" />
               </label>
               <label className="adm-field">
                 <div className="adm-field__label">{t('fields.productName')}</div>
-                <input className="adm-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Banana" />
+                <input className="adm-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: Chuối, Táo Fuji, Cam sành…" />
               </label>
               <label className="adm-field">
                 <div className="adm-field__label">{t('fields.categoryId')}</div>
@@ -460,7 +461,7 @@ export function ProductsPage() {
               </label>
               <label className="adm-field">
                 <div className="adm-field__label">{t('fields.originCountry')}</div>
-                <input className="adm-input" value={originCountry} onChange={(e) => setOriginCountry(e.target.value)} placeholder="VN" />
+                <input className="adm-input" value={originCountry} onChange={(e) => setOriginCountry(e.target.value)} placeholder="VD: VN, USA, JP, TH" />
               </label>
               <label className="adm-field">
                 <div className="adm-field__label">{t('fields.isFeatured')}</div>
@@ -663,25 +664,36 @@ export function ProductsPage() {
           </table>
         </div>
 
-        <div className="pager">
-          <div className="muted">
-            {t('table.total')}: {listQuery.data?.totalElements ?? 0} / {t('table.page')} {listQuery.data ? listQuery.data.number + 1 : 0}/{listQuery.data?.totalPages ?? 0}
-          </div>
-          <div className="pager__actions">
-            <label className="adm-field" style={{ minWidth: 120 }}>
-              <div className="adm-field__label">{t('fields.size')}</div>
-              <select className="adm-input" value={String(size)} onChange={(e) => { setPage(0); setSize(Number(e.target.value)); }}>
-                <option value="10">10</option>
-                <option value="20">20</option>
-                <option value="50">50</option>
-              </select>
-            </label>
-            <button className="adm-button adm-button--ghost" type="button" onClick={() => setPage(0)} disabled={!listQuery.data || page <= 0}>{t('table.first')}</button>
-            <button className="adm-button adm-button--ghost" type="button" onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={!listQuery.data || page <= 0}>{t('table.prev')}</button>
-            <button className="adm-button adm-button--ghost" type="button" onClick={() => setPage((p) => (listQuery.data ? Math.min(listQuery.data.totalPages - 1, p + 1) : p))} disabled={!listQuery.data || page >= (listQuery.data.totalPages ?? 1) - 1}>{t('table.next')}</button>
-          </div>
-        </div>
       </div>
+
+      {(() => {
+        const tp = Math.ceil(totalElements / size) || 1;
+        const pageNums: (number | '...')[] = [];
+        for (let i = 0; i < tp; i++) {
+          if (i === 0 || i === tp - 1 || Math.abs(i - page) <= 2) pageNums.push(i);
+          else if (pageNums[pageNums.length - 1] !== '...') pageNums.push('...');
+        }
+        return (
+          <div className="pager">
+            <div className="muted" style={{ fontSize: 12 }}>
+              Tổng: <strong>{totalElements.toLocaleString('vi-VN')}</strong> bản ghi &nbsp;·&nbsp;
+              <select className="adm-input" style={{ width: 90, padding: '2px 6px', fontSize: 12 }} value={String(size)} onChange={(e) => { setSize(Number(e.target.value)); setPage(0); }}>
+                {[10, 20, 50].map(s => <option key={s} value={String(s)}>{s} / trang</option>)}
+              </select>
+            </div>
+            <div className="pager__actions">
+              <button className="adm-button adm-button--ghost" disabled={page <= 0} onClick={() => setPage(0)}>«</button>
+              <button className="adm-button adm-button--ghost" disabled={page <= 0} onClick={() => setPage(p => p - 1)}>‹</button>
+              {pageNums.map((p, i) => p === '...'
+                ? <span key={`d${i}`} style={{ padding: '0 4px', color: 'var(--muted)' }}>…</span>
+                : <button key={p} className={p === page ? 'adm-button adm-button--primary' : 'adm-button adm-button--ghost'} onClick={() => setPage(p as number)}>{(p as number) + 1}</button>
+              )}
+              <button className="adm-button adm-button--ghost" disabled={page >= tp - 1} onClick={() => setPage(p => p + 1)}>›</button>
+              <button className="adm-button adm-button--ghost" disabled={page >= tp - 1} onClick={() => setPage(tp - 1)}>»</button>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

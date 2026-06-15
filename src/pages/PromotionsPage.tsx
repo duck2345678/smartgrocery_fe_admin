@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { adminApi, type Product } from '../api/adminApi';
 
@@ -115,37 +116,37 @@ export function PromotionsPage() {
       </div>
 
       {/* TABS */}
-      <div className="flex gap-4 mb-6">
-        <button 
+      <div style={{ display: 'flex', gap: 12, marginBottom: 2 }}>
+        <button
           onClick={() => setActiveTab('VOUCHERS')}
-          className={`adm-button ${activeTab === 'VOUCHERS' ? 'adm-button--primary' : 'bg-white text-slate-600'}`}
+          className={`adm-button ${activeTab === 'VOUCHERS' ? 'adm-button--primary' : 'adm-button--ghost'}`}
         >
           {t('promotions.voucherHub.tabs.vouchers')}
         </button>
-        <button 
+        <button
           onClick={() => setActiveTab('FLASH_SALE')}
-          className={`adm-button ${activeTab === 'FLASH_SALE' ? 'adm-button--primary' : 'bg-white text-slate-600'}`}
+          className={`adm-button ${activeTab === 'FLASH_SALE' ? 'adm-button--primary' : 'adm-button--ghost'}`}
         >
           {t('promotions.voucherHub.tabs.flashSale')}
         </button>
       </div>
 
       {activeTab === 'VOUCHERS' ? (
-        <div className="space-y-6">
-          <div className="flex gap-3">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+          <div style={{ display: 'flex', gap: 12 }}>
             <button
               type="button"
               onClick={() => switchVoucherPage('NORMAL')}
-              className={`adm-button ${voucherPage === 'NORMAL' ? 'adm-button--primary' : 'bg-white text-slate-600'}`}
+              className={`adm-button ${voucherPage === 'NORMAL' ? 'adm-button--primary' : 'adm-button--ghost'}`}
             >
-              Voucher thường
+              {t('promotions.voucherHub.tabs.normalVoucher')}
             </button>
             <button
               type="button"
               onClick={() => switchVoucherPage('AI')}
-              className={`adm-button ${voucherPage === 'AI' ? 'adm-button--primary' : 'bg-white text-slate-600'}`}
+              className={`adm-button ${voucherPage === 'AI' ? 'adm-button--primary' : 'adm-button--ghost'}`}
             >
-              Voucher AI đặc biệt
+              {t('promotions.voucherHub.tabs.aiVoucher')}
             </button>
           </div>
 
@@ -195,9 +196,9 @@ export function PromotionsPage() {
                 />
               </label>
             </div>
-            <div className="mt-4 flex justify-end">
-              <button 
-                className="adm-button adm-button--primary" 
+            <div style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                className="adm-button adm-button--primary"
                 onClick={() => generateVouchersMutation.mutate()}
                 disabled={generateVouchersMutation.isPending}
               >
@@ -237,13 +238,14 @@ export function PromotionsPage() {
                         {v.assignedUserId ? <div className="text-[11px] text-slate-500 mt-1">User #{v.assignedUserId}</div> : null}
                       </td>
                       <td>
-                        <button 
-                          className="text-red-500 hover:underline"
+                        <button
+                          className="adm-button adm-button--ghost"
                           onClick={() => {
                             if (confirm(t('common.deactivate'))) deleteVoucherMutation.mutate(v.id);
                           }}
+                          title={t('promotions.voucherHub.actions.delete')}
                         >
-                          {t('promotions.voucherHub.actions.delete')}
+                          <Trash2 size={16} />
                         </button>
                       </td>
                     </tr>

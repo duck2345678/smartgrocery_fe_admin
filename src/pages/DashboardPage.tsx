@@ -1,148 +1,105 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { useTranslation } from 'react-i18next';
+import {
+  Users, Tag, ClipboardList, AlertTriangle, Package, CalendarClock,
+  ArrowUpRight, TrendingUp,
+} from 'lucide-react';
 import { adminApi } from '../api/adminApi';
 
 const fmt = (n: number) => n.toLocaleString('vi-VN');
-const fmtVnd = (n: number) => n.toLocaleString('vi-VN') + '₫';
-
-// ── Date range helpers ──────────────────────────────────────────────────────
-type DateRange = 'today' | '7d' | '30d' | 'month';
-
-const RANGE_LABELS: Record<DateRange, string> = {
-  today: 'Hôm nay',
-  '7d':  '7 ngày',
-  '30d': '30 ngày',
-  month: 'Tháng này',
-};
-
-function getDateRange(range: DateRange): { from: number; to: number } {
-  const now = Date.now();
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  const todayStart = d.getTime();
-  switch (range) {
-    case 'today':  return { from: todayStart, to: now };
-    case '7d':     return { from: todayStart - 6 * 86_400_000, to: now };
-    case '30d':    return { from: todayStart - 29 * 86_400_000, to: now };
-    case 'month': {
-      const first = new Date(d.getFullYear(), d.getMonth(), 1);
-      return { from: first.getTime(), to: now };
-    }
-  }
-}
-
-// ── Sparkline SVG ───────────────────────────────────────────────────────────
-function Sparkline({ values }: { values: number[] }) {
-  if (values.length < 2) return null;
-  const W = 400, H = 60, PX = 4, PY = 6;
-  const max = Math.max(...values, 1);
-  const step = (W - PX * 2) / (values.length - 1);
-  const pts = values.map((v, i): [number, number] => [
-    PX + i * step,
-    H - PY - (v / max) * (H - PY * 2),
-  ]);
-  const linePath = pts.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
-  const areaPath = `${linePath} L${pts[pts.length - 1][0].toFixed(1)},${H} L${PX},${H} Z`;
-
-  return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      style={{ width: '100%', height: H, display: 'block', marginTop: 12 }}
-      preserveAspectRatio="none"
-    >
-      <defs>
-        <linearGradient id="sg-area" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%"   stopColor="var(--primary)" stopOpacity="0.22" />
-          <stop offset="100%" stopColor="var(--primary)" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <path d={areaPath} fill="url(#sg-area)" />
-      <path d={linePath} fill="none" stroke="var(--primary)" strokeWidth="2.5"
-            strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-// ── Misc helpers ─────────────────────────────────────────────────────────────
-const statusBadgeClass = (status: string): string => {
-  const s = (status ?? '').toUpperCase();
-  if (s === 'DELIVERED') return 'adm-badge--success';
-  if (s === 'CANCELLED' || s === 'CANCELED') return 'adm-badge--danger';
-  if (s === 'PENDING') return 'adm-badge--pending';
-  if (['CONFIRMED', 'CONFIRMING', 'PROCESSING', 'PICKING', 'PICKED'].includes(s)) return 'adm-badge--cyan';
-  if (['DELIVERING', 'IN_TRANSIT', 'SHIPPED'].includes(s)) return 'adm-badge--purple';
-  return 'adm-badge--muted';
-};
 
 const SHIFT_LABELS: Record<string, string> = { S: 'Ca Sáng', C: 'Ca Chiều', G: 'Ca Gãy' };
-
 const SHIFT_STYLE: Record<string, { bg: string; color: string; border: string }> = {
-  S: { bg: 'rgba(249,115,22,0.1)',  color: 'var(--primary)', border: 'rgba(249,115,22,0.25)' },
-  C: { bg: 'rgba(14,165,233,0.1)',  color: 'var(--cyan)',    border: 'rgba(14,165,233,0.25)' },
-  G: { bg: 'rgba(139,92,246,0.1)',  color: 'var(--purple)',  border: 'rgba(139,92,246,0.25)' },
+  S: { bg: 'rgba(249,115,22,0.08)',  color: 'var(--primary)', border: 'rgba(249,115,22,0.18)' },
+  C: { bg: 'rgba(14,165,233,0.08)',  color: 'var(--cyan)',    border: 'rgba(14,165,233,0.18)' },
+  G: { bg: 'rgba(139,92,246,0.08)', color: 'var(--purple)',  border: 'rgba(139,92,246,0.18)' },
 };
 
-function SectionHeader({ label, hint }: { label: string; hint?: string }) {
+function StatCard({
+  label, value, hint, icon, bar, iconBg, iconColor, valueColor, loading, to,
+}: {
+  label: string;
+  value: string;
+  hint: string;
+  icon: React.ReactNode;
+  bar: string;
+  iconBg: string;
+  iconColor: string;
+  valueColor?: string;
+  loading?: boolean;
+  to?: string;
+}) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-      <span style={{
-        fontSize: 11, fontWeight: 700, letterSpacing: '0.8px',
-        textTransform: 'uppercase', color: 'var(--muted)',
-        whiteSpace: 'nowrap', flexShrink: 0,
-      }}>
-        {label}
-      </span>
-      {hint && (
-        <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 400, flexShrink: 0 }}>
-          {hint}
-        </span>
-      )}
-      <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+    <div style={{
+      background: 'var(--panel)',
+      borderRadius: 'var(--radius-lg)',
+      boxShadow: '0 2px 16px -4px rgba(60,20,80,0.09), 0 1px 3px rgba(60,20,80,0.05)',
+      border: '1px solid var(--border)',
+      overflow: 'hidden',
+      display: 'flex',
+      flexDirection: 'column',
+      transition: 'box-shadow 0.2s, transform 0.2s',
+    }}
+      onMouseEnter={e => {
+        (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 32px -6px rgba(60,20,80,0.15), 0 2px 8px rgba(60,20,80,0.07)';
+        (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)';
+      }}
+      onMouseLeave={e => {
+        (e.currentTarget as HTMLDivElement).style.boxShadow = '0 2px 16px -4px rgba(60,20,80,0.09), 0 1px 3px rgba(60,20,80,0.05)';
+        (e.currentTarget as HTMLDivElement).style.transform = 'translateY(0)';
+      }}
+    >
+      <div style={{ height: 4, background: bar, flexShrink: 0 }} />
+      <div style={{ padding: '18px 20px 18px', display: 'flex', flexDirection: 'column', gap: 14, flex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{
+              fontSize: 10.5, fontWeight: 700, letterSpacing: '0.7px',
+              textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 8,
+            }}>
+              {label}
+            </div>
+            <div style={{
+              fontSize: 36, fontWeight: 800, lineHeight: 1,
+              color: valueColor ?? 'var(--text)',
+              letterSpacing: '-1px',
+            }}>
+              {loading ? <span style={{ fontSize: 22, color: 'var(--muted)', fontWeight: 400 }}>…</span> : value}
+            </div>
+          </div>
+          <div style={{
+            width: 44, height: 44, borderRadius: 13, flexShrink: 0,
+            background: iconBg, display: 'grid', placeItems: 'center',
+            color: iconColor,
+          }}>
+            {icon}
+          </div>
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
+          {to ? (
+            <Link
+              to={to}
+              style={{ color: iconColor, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 3, textDecoration: 'none' }}
+            >
+              {hint} <ArrowUpRight size={11} />
+            </Link>
+          ) : hint}
+        </div>
+      </div>
     </div>
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function ProgressBar({ pct, color }: { pct: number; color: string }) {
-  return (
-    <div style={{ height: 6, borderRadius: 999, background: 'var(--border)', overflow: 'hidden' }}>
-      <div style={{
-        height: '100%',
-        width: `${Math.max(0, Math.min(pct, 100))}%`,
-        background: color,
-        borderRadius: 999,
-        transition: 'width 700ms cubic-bezier(0.16, 1, 0.3, 1)',
-      }} />
-    </div>
-  );
-}
-
-// ── Page ─────────────────────────────────────────────────────────────────────
 export function DashboardPage() {
-  const { t } = useTranslation();
-  const [dateRange, setDateRange] = useState<DateRange>('30d');
-
   const opsQuery = useQuery({
     queryKey: ['ops-monitor'],
     queryFn: () => adminApi.ops.monitor(),
     refetchInterval: 30000,
   });
-  const issuesQuery = useQuery({
-    queryKey: ['admin-issues-open'],
-    queryFn: () => adminApi.issues.open(),
-    refetchInterval: 30000,
-  });
-  const ordersQuery = useQuery({
-    queryKey: ['admin-all-orders'],
-    queryFn: () => adminApi.orders.listAll(),
-    staleTime: 60000,
-    refetchInterval: 60000,
-  });
   const customersQuery = useQuery({
     queryKey: ['admin-customers-count'],
-    queryFn: () => adminApi.users.list({ role: 'CUSTOMER', page: 0, size: 1 }),
+    queryFn: () => adminApi.users.count('CUSTOMER'),
     staleTime: 60000,
   });
   const inventoryQuery = useQuery({
@@ -172,266 +129,198 @@ export function DashboardPage() {
     staleTime: 60000,
   });
 
-  // ── Range-filtered orders ────────────────────────────────────────────────
-  const rangeOrders = useMemo(() => {
-    const { from, to } = getDateRange(dateRange);
-    return (ordersQuery.data ?? []).filter((o) => {
-      if (!o.createdAt) return false;
-      const time = new Date(o.createdAt).getTime();
-      return time >= from && time <= to;
-    });
-  }, [ordersQuery.data, dateRange]);
-
-  const rangeStats = useMemo(() => {
-    const delivered = rangeOrders.filter((o) => (o.status ?? '').toUpperCase() === 'DELIVERED');
-    return {
-      total:          rangeOrders.length,
-      pending:        rangeOrders.filter((o) => (o.status ?? '').toUpperCase() === 'PENDING').length,
-      deliveredCount: delivered.length,
-      revenue:        delivered.reduce((s, o) => s + (o.totalAmount ?? 0), 0),
-    };
-  }, [rangeOrders]);
-
-  // ── Sparkline: daily DELIVERED revenue for the selected range ─────────────
-  const sparklineValues = useMemo(() => {
-    if (dateRange === 'today') return [];
-    const { from } = getDateRange(dateRange);
-    const days =
-      dateRange === '7d'  ? 7 :
-      dateRange === '30d' ? 30 :
-      new Date().getDate(); // days elapsed in current month
-
-    const map: Record<string, number> = {};
-    for (let i = 0; i < days; i++) {
-      const d = new Date(from + i * 86_400_000);
-      map[d.toISOString().slice(0, 10)] = 0;
-    }
-    (ordersQuery.data ?? [])
-      .filter((o) => (o.status ?? '').toUpperCase() === 'DELIVERED' && o.createdAt)
-      .forEach((o) => {
-        const key = o.createdAt!.slice(0, 10);
-        if (key in map) map[key] += o.totalAmount ?? 0;
-      });
-    return Object.keys(map).sort().map((k) => map[k]);
-  }, [ordersQuery.data, dateRange]);
-
-  // ── Other computed values ────────────────────────────────────────────────
-  const orderPipeline = useMemo(() => {
-    const orders = ordersQuery.data ?? [];
-    const total = orders.length || 1;
-    const pending    = orders.filter((o) => (o.status ?? '').toUpperCase() === 'PENDING').length;
-    const processing = orders.filter((o) =>
-      ['CONFIRMED', 'CONFIRMING', 'PROCESSING', 'PICKING', 'PICKED'].includes((o.status ?? '').toUpperCase())
-    ).length;
-    const delivering = orders.filter((o) =>
-      ['DELIVERING', 'IN_TRANSIT', 'SHIPPED'].includes((o.status ?? '').toUpperCase())
-    ).length;
-    const delivered  = orders.filter((o) => (o.status ?? '').toUpperCase() === 'DELIVERED').length;
-    const cancelled  = orders.filter((o) =>
-      ['CANCELLED', 'CANCELED', 'REFUNDED'].includes((o.status ?? '').toUpperCase())
-    ).length;
-    return { total, pending, processing, delivering, delivered, cancelled };
-  }, [ordersQuery.data]);
-
-  const recentOrders = useMemo(
-    () => [...(ordersQuery.data ?? [])]
-      .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
-      .slice(0, 8),
-    [ordersQuery.data]
-  );
-
   const lowStockItems = useMemo(
     () => (inventoryQuery.data ?? [])
-      .filter((it) => it.availableQuantity < 10)
+      .filter(it => it.availableQuantity < 10)
       .sort((a, b) => a.availableQuantity - b.availableQuantity)
       .slice(0, 8),
-    [inventoryQuery.data]
+    [inventoryQuery.data],
   );
 
   const todayWorkingStaff = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
-    return (approvedShiftsQuery.data ?? []).filter((r) => r.workDate === today);
+    return (approvedShiftsQuery.data ?? []).filter(r => r.workDate === today);
   }, [approvedShiftsQuery.data]);
 
   const activePromotions = useMemo(
-    () => (promotionsQuery.data ?? []).filter((p) => p.status === 'ACTIVE').length,
-    [promotionsQuery.data]
+    () => (promotionsQuery.data ?? []).filter(p => p.status === 'ACTIVE').length,
+    [promotionsQuery.data],
   );
   const pendingShiftsCount = (pendingShiftsQuery.data ?? []).length;
   const draftPoCount = useMemo(
-    () => (purchaseOrdersQuery.data ?? []).filter((p) => (p.status ?? '').toUpperCase() === 'DRAFT').length,
-    [purchaseOrdersQuery.data]
+    () => (purchaseOrdersQuery.data ?? []).filter(p => (p.status ?? '').toUpperCase() === 'DRAFT').length,
+    [purchaseOrdersQuery.data],
   );
-  const totalCustomers = customersQuery.data?.totalElements ?? 0;
+  const totalCustomers = customersQuery.data ?? 0;
+  const slaRisk = opsQuery.data?.stagnantOrders.length ?? 0;
+  const stagnantOrders = opsQuery.data?.stagnantOrders ?? [];
 
-  const L = (loading: boolean) => loading ? <span className="muted">…</span> : null;
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
 
   return (
-    <div className="page" style={{ gap: 32 }}>
-      <div className="page__header">
+    <div className="page" style={{ gap: 28 }}>
+
+      {/* ── Header ── */}
+      <div style={{
+        background: 'linear-gradient(135deg, #f97316 0%, #ec4899 55%, #8b5cf6 100%)',
+        borderRadius: 'var(--radius-xl)',
+        padding: '24px 28px',
+        color: '#fff',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        boxShadow: '0 8px 32px -8px rgba(249,115,22,0.45)',
+      }}>
         <div>
-          <div className="page__title">Dashboard</div>
-          <div className="page__subtitle">Tổng quan vận hành thời gian thực</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+            <TrendingUp size={20} strokeWidth={2.5} />
+            <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.5px', opacity: 0.9 }}>TRUNG TÂM CHỈ HUY</span>
+          </div>
+          <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: '-0.5px', lineHeight: 1 }}>Dashboard</div>
+          <div style={{ fontSize: 13, opacity: 0.8, marginTop: 6 }}>Tổng quan vận hành thời gian thực</div>
+        </div>
+        <div style={{ textAlign: 'right', opacity: 0.85 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: '0.3px' }}>{dateStr}</div>
+          {slaRisk > 0 && (
+            <div style={{
+              marginTop: 8, background: 'rgba(255,255,255,0.2)',
+              backdropFilter: 'blur(8px)', borderRadius: 99,
+              padding: '4px 12px', fontSize: 12, fontWeight: 700,
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+            }}>
+              <AlertTriangle size={12} />
+              {slaRisk} đơn sắp trễ SLA
+            </div>
+          )}
         </div>
       </div>
 
-      {/* ── Tổng quan kinh doanh ── */}
-      <section>
-        <SectionHeader label="Tổng quan kinh doanh" />
-
-        {/* Date range selector */}
-        <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
-          {(['today', '7d', '30d', 'month'] as DateRange[]).map((r) => (
-            <button
-              key={r}
-              onClick={() => setDateRange(r)}
-              style={{
-                padding: '5px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600,
-                border: '1px solid var(--border)',
-                background: dateRange === r ? 'var(--grad-primary)' : 'transparent',
-                color: dateRange === r ? '#fff' : 'var(--muted)',
-                cursor: 'pointer', transition: 'all 150ms',
-                boxShadow: dateRange === r ? '0 2px 10px rgba(var(--primary-rgb),0.35)' : 'none',
-              }}
-            >
-              {RANGE_LABELS[r]}
-            </button>
-          ))}
-        </div>
-
-        <div className="grid grid--3">
-          {/* Tổng đơn */}
-          <div className="card">
-            <div className="card__label">Tổng đơn hàng</div>
-            <div className="card__value">
-              {ordersQuery.isLoading ? L(true) : fmt(rangeStats.total)}
-            </div>
-            <div className="card__hint">
-              Pending:{' '}
-              <strong style={{ color: 'var(--warn)' }}>
-                {ordersQuery.isLoading ? '…' : fmt(rangeStats.pending)}
-              </strong>
-              {' · '}Đã giao:{' '}
-              <strong style={{ color: 'var(--emerald)' }}>
-                {ordersQuery.isLoading ? '…' : fmt(rangeStats.deliveredCount)}
-              </strong>
-            </div>
-          </div>
-
-          {/* Doanh thu */}
-          <div className="card" style={{ gridColumn: 'span 1' }}>
-            <div className="card__label">Doanh thu (DELIVERED)</div>
-            <div className="card__value" style={{ fontSize: '1.3rem' }}>
-              {ordersQuery.isLoading ? L(true) : fmtVnd(rangeStats.revenue)}
-            </div>
-            <div className="card__hint">
-              {ordersQuery.isLoading
-                ? '…'
-                : `${fmt(rangeStats.deliveredCount)} đơn đã giao trong kỳ`}
-            </div>
-            {!ordersQuery.isLoading && sparklineValues.length > 1 && (
-              <Sparkline values={sparklineValues} />
-            )}
-            {!ordersQuery.isLoading && dateRange === 'today' && (
-              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 10 }}>
-                Chọn khoảng rộng hơn để xem biểu đồ xu hướng
-              </div>
-            )}
-          </div>
-
-          {/* Khách hàng */}
-          <div className="card">
-            <div className="card__label">Khách hàng</div>
-            <div className="card__value">
-              {customersQuery.isLoading ? L(true) : fmt(totalCustomers)}
-            </div>
-            <div className="card__hint">Tổng tài khoản CUSTOMER</div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Real-time Operations ── */}
-      <section>
-        <SectionHeader label="Vận hành thời gian thực" />
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 14 }}>
-          <div className="card">
-            <div className="card__label">Đơn PENDING</div>
-            <div className="card__value" style={{ fontSize: 28, color: 'var(--warn)' }}>
-              {ordersQuery.isLoading ? L(true) : fmt(orderPipeline.pending)}
-            </div>
-            <div className="card__hint">Tất cả đơn chờ xử lý</div>
-          </div>
-          <div className="card">
-            <div className="card__label">Sắp trễ SLA</div>
-            <div className="card__value" style={{ fontSize: 28, color: 'var(--danger)' }}>
-              {opsQuery.isLoading ? L(true) : fmt(opsQuery.data?.stagnantOrders.length ?? 0)}
-            </div>
-            <div className="card__hint">≤ 15 phút đến deadline</div>
-          </div>
-          <div className="card">
-            <div className="card__label">Sự cố đang mở</div>
-            <div className="card__value" style={{ fontSize: 28, color: 'var(--pink)' }}>
-              {issuesQuery.isLoading ? L(true) : fmt(issuesQuery.data?.length ?? 0)}
-            </div>
-            <div className="card__hint">
-              <Link to="/issues" style={{ color: 'var(--primary)' }}>Xem Issue Inbox →</Link>
-            </div>
-          </div>
-          <div className="card">
-            <div className="card__label">Tồn kho thấp</div>
-            <div className="card__value" style={{ fontSize: 28, color: 'var(--purple)' }}>
-              {inventoryQuery.isLoading ? L(true) : fmt(lowStockItems.length)}
-            </div>
-            <div className="card__hint">Variants &lt; 10 đơn vị</div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Today's Shifts ── */}
-      <section>
-        <SectionHeader
-          label="Nhân sự hôm nay"
-          hint={approvedShiftsQuery.isLoading ? undefined : `${todayWorkingStaff.length} người đang làm`}
+      {/* ── 6 KPI Cards ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+        <StatCard
+          label="Khách hàng"
+          value={fmt(totalCustomers)}
+          hint="Tổng tài khoản CUSTOMER"
+          icon={<Users size={20} strokeWidth={2} />}
+          bar="linear-gradient(90deg, #0ea5e9, #8b5cf6)"
+          iconBg="rgba(14,165,233,0.12)"
+          iconColor="var(--cyan)"
+          loading={customersQuery.isLoading}
         />
-        <div className="card">
+        <StatCard
+          label="Khuyến mãi đang chạy"
+          value={fmt(activePromotions)}
+          hint="Xem chiến dịch"
+          icon={<Tag size={20} strokeWidth={2} />}
+          bar="linear-gradient(90deg, #ec4899, #f97316)"
+          iconBg="rgba(236,72,153,0.12)"
+          iconColor="var(--pink)"
+          loading={promotionsQuery.isLoading}
+          to="/supply/promotions"
+        />
+        <StatCard
+          label="Phiếu nhập nháp"
+          value={fmt(draftPoCount)}
+          hint="Xem phiếu nhập"
+          icon={<ClipboardList size={20} strokeWidth={2} />}
+          bar="linear-gradient(90deg, #8b5cf6, #0ea5e9)"
+          iconBg="rgba(139,92,246,0.12)"
+          iconColor="var(--purple)"
+          loading={purchaseOrdersQuery.isLoading}
+          to="/supply/purchase-orders"
+        />
+        <StatCard
+          label="Sắp trễ SLA"
+          value={fmt(slaRisk)}
+          hint="≤ 15 phút đến deadline"
+          icon={<AlertTriangle size={20} strokeWidth={2} />}
+          bar="linear-gradient(90deg, #ef4444, #f97316)"
+          iconBg="rgba(239,68,68,0.12)"
+          iconColor="var(--danger)"
+          valueColor={slaRisk > 0 ? 'var(--danger)' : undefined}
+          loading={opsQuery.isLoading}
+        />
+        <StatCard
+          label="Tồn kho thấp"
+          value={fmt(lowStockItems.length)}
+          hint="Variants < 10 đơn vị"
+          icon={<Package size={20} strokeWidth={2} />}
+          bar="linear-gradient(90deg, #f59e0b, #84cc16)"
+          iconBg="rgba(245,158,11,0.12)"
+          iconColor="var(--warn)"
+          valueColor={lowStockItems.length > 0 ? 'var(--warn)' : undefined}
+          loading={inventoryQuery.isLoading}
+        />
+        <StatCard
+          label="Ca làm chờ duyệt"
+          value={fmt(pendingShiftsCount)}
+          hint="Xem lịch làm việc"
+          icon={<CalendarClock size={20} strokeWidth={2} />}
+          bar="linear-gradient(90deg, #10b981, #0ea5e9)"
+          iconBg="rgba(16,185,129,0.12)"
+          iconColor="var(--emerald)"
+          valueColor={pendingShiftsCount > 0 ? 'var(--emerald)' : undefined}
+          loading={pendingShiftsQuery.isLoading}
+          to="/staff-management"
+        />
+      </div>
+
+      {/* ── Nhân sự hôm nay ── */}
+      <section>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Nhân sự hôm nay</span>
+          {!approvedShiftsQuery.isLoading && (
+            <span style={{
+              background: 'rgba(16,185,129,0.12)', color: 'var(--emerald)',
+              fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 99,
+            }}>
+              {todayWorkingStaff.length} người đang làm
+            </span>
+          )}
+          <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+        </div>
+        <div style={{
+          background: 'var(--panel)', borderRadius: 'var(--radius-lg)',
+          border: '1px solid var(--border)', padding: '16px 20px',
+          boxShadow: '0 2px 12px -4px rgba(60,20,80,0.07)',
+        }}>
           {approvedShiftsQuery.isLoading ? (
             <div className="muted" style={{ fontSize: 13 }}>Đang tải…</div>
           ) : todayWorkingStaff.length === 0 ? (
-            <div className="muted" style={{ fontSize: 13 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--muted)', fontSize: 13 }}>
+              <CalendarClock size={16} />
               Chưa có ca nào được duyệt cho hôm nay.{' '}
-              <Link to="/staff-management" style={{ color: 'var(--primary)' }}>
+              <Link to="/staff-management" style={{ color: 'var(--primary)', fontWeight: 600 }}>
                 Xem lịch làm việc →
               </Link>
             </div>
           ) : (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-              {todayWorkingStaff.map((r) => {
+              {todayWorkingStaff.map(r => {
                 const st = SHIFT_STYLE[r.shiftType] ?? SHIFT_STYLE['S'];
                 const initial = (r.staffName ?? '?').trim().split(' ').at(-1)?.slice(0, 1).toUpperCase() ?? '?';
                 return (
-                  <div
-                    key={r.id}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 10,
-                      padding: '10px 14px',
-                      border: `1px solid ${st.border}`,
-                      borderRadius: 'var(--radius-lg)',
-                      background: st.bg,
-                      minWidth: 190, flex: '0 0 auto',
-                    }}
-                  >
+                  <div key={r.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '10px 14px',
+                    border: `1px solid ${st.border}`,
+                    borderRadius: 'var(--radius-lg)',
+                    background: st.bg,
+                    minWidth: 180, flex: '0 0 auto',
+                  }}>
                     <div style={{
-                       width: 34, height: 34, borderRadius: 10,
-                       background: st.color,
-                       display: 'grid', placeItems: 'center',
-                       fontWeight: 900, fontSize: 14, color: '#fff',
-                       flexShrink: 0, boxShadow: `0 0 14px ${st.border}`,
+                      width: 36, height: 36, borderRadius: 11,
+                      background: st.color,
+                      display: 'grid', placeItems: 'center',
+                      fontWeight: 900, fontSize: 14, color: '#fff',
+                      flexShrink: 0,
                     }}>
                       {initial}
                     </div>
                     <div>
                       <div style={{ fontWeight: 600, fontSize: 13 }}>{r.staffName ?? '-'}</div>
-                      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>
+                      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
                         {SHIFT_LABELS[r.shiftType] ?? r.shiftType}
                       </div>
                     </div>
@@ -443,201 +332,123 @@ export function DashboardPage() {
         </div>
       </section>
 
-      {/* ── Order Status Pipeline ── */}
+      {/* ── Cảnh báo & SLA ── */}
       <section>
-        <SectionHeader label="Phân bổ đơn hàng" hint="(tất cả thời gian)" />
-        <div className="card">
-          {ordersQuery.isLoading ? (
-            <div className="muted" style={{ fontSize: 13 }}>Đang tải…</div>
-          ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: '12px 32px' }}>
-              {(
-                [
-                  { label: 'Pending',    count: orderPipeline.pending,    color: 'var(--warn)' },
-                  { label: 'Processing', count: orderPipeline.processing, color: 'var(--cyan)' },
-                  { label: 'Delivering', count: orderPipeline.delivering, color: 'var(--purple)' },
-                  { label: 'Delivered',  count: orderPipeline.delivered,  color: 'var(--emerald)' },
-                  { label: 'Cancelled',  count: orderPipeline.cancelled,  color: 'var(--danger)' },
-                ] as { label: string; count: number; color: string }[]
-              ).map(({ label, count, color }) => {
-                const pct = ordersQuery.data && ordersQuery.data.length > 0
-                  ? (count / ordersQuery.data.length) * 100 : 0;
-                return (
-                  <div key={label}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                        {label}
-                      </span>
-                      <span style={{ fontFamily: 'var(--mono)', fontSize: 13, color, fontWeight: 700 }}>
-                        {fmt(count)}{' '}
-                        <span style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 400 }}>({pct.toFixed(0)}%)</span>
-                      </span>
-                    </div>
-                    <ProgressBar pct={pct} color={color} />
-                  </div>
-                );
-              })}
-            </div>
-          )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Cảnh báo & Kho</span>
+          <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
         </div>
-      </section>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
 
-      {/* ── Other Operations ── */}
-      <section>
-        <SectionHeader label="Hoạt động khác" />
-        <div className="grid grid--3">
-          <div className="card">
-            <div className="card__label">Khuyến mãi đang chạy</div>
-            <div className="card__value" style={{ fontSize: 28, color: 'var(--pink)' }}>
-              {promotionsQuery.isLoading ? L(true) : fmt(activePromotions)}
-            </div>
-            <div className="card__hint">
-              <Link to="/supply/promotions" style={{ color: 'var(--primary)' }}>Xem chiến dịch →</Link>
-            </div>
-          </div>
-          <div className="card">
-            <div className="card__label">Ca làm chờ duyệt</div>
-            <div className="card__value" style={{ fontSize: 28, color: 'var(--cyan)' }}>
-              {pendingShiftsQuery.isLoading ? L(true) : fmt(pendingShiftsCount)}
-            </div>
-            <div className="card__hint">
-              <Link to="/staff-management" style={{ color: 'var(--primary)' }}>Xem lịch làm việc →</Link>
-            </div>
-          </div>
-          <div className="card">
-            <div className="card__label">Phiếu nhập nháp</div>
-            <div className="card__value" style={{ fontSize: 28, color: 'var(--purple)' }}>
-              {purchaseOrdersQuery.isLoading ? L(true) : fmt(draftPoCount)}
-            </div>
-            <div className="card__hint">
-              <Link to="/supply/purchase-orders" style={{ color: 'var(--primary)' }}>Xem phiếu nhập →</Link>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Transactions and Stock ── */}
-      <section>
-        <SectionHeader label="Giao dịch & Kho" />
-        <div className="grid grid--2">
-          <div className="card">
-            <div style={{ marginBottom: 14 }}>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>Đơn hàng gần đây</div>
-              <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>8 đơn mới nhất</div>
-            </div>
-            {ordersQuery.isLoading ? (
-              <div className="muted">Đang tải…</div>
-            ) : recentOrders.length === 0 ? (
-              <div className="muted">Chưa có đơn hàng</div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {recentOrders.map((o) => (
-                  <div
-                    key={o.id}
-                    style={{
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      padding: '8px 12px', borderRadius: 'var(--radius-md)',
-                      border: '1px solid var(--border)', background: 'var(--list-row-bg)',
-                    }}
-                  >
-                    <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                      <span className="mono" style={{ fontSize: 12 }}>#{o.orderNumber ?? o.id}</span>
-                      <span className={`adm-badge ${statusBadgeClass(o.status)}`}>{o.status}</span>
-                    </div>
-                    <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                      <span className="mono" style={{ fontSize: 12 }}>
-                        {o.totalAmount != null ? fmtVnd(o.totalAmount) : '-'}
-                      </span>
-                      <span className="muted" style={{ fontSize: 11 }}>
-                        {o.createdAt ? o.createdAt.slice(5, 16) : '-'}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+          {/* Low stock */}
+          <div style={{
+            background: 'var(--panel)', borderRadius: 'var(--radius-lg)',
+            border: '1px solid var(--border)', overflow: 'hidden',
+            boxShadow: '0 2px 12px -4px rgba(60,20,80,0.07)',
+          }}>
+            <div style={{
+              padding: '14px 18px 12px',
+              borderBottom: '1px solid var(--border)',
+              display: 'flex', alignItems: 'center', gap: 10,
+            }}>
+              <div style={{
+                width: 30, height: 30, borderRadius: 9,
+                background: 'rgba(245,158,11,0.12)',
+                display: 'grid', placeItems: 'center',
+                color: 'var(--warn)',
+              }}>
+                <Package size={15} />
               </div>
-            )}
-          </div>
-
-          <div className="card">
-            <div style={{ marginBottom: 14 }}>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>Cảnh báo tồn kho thấp</div>
-              <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>Variants còn &lt; 10 đơn vị</div>
-            </div>
-            {inventoryQuery.isLoading ? (
-              <div className="muted">Đang tải…</div>
-            ) : lowStockItems.length === 0 ? (
-              <div className="muted" style={{ marginTop: 8 }}>✓ Tất cả hàng đang đủ tồn kho</div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {lowStockItems.map((it) => (
-                  <div
-                    key={it.id}
-                    style={{
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      padding: '8px 12px', borderRadius: 'var(--radius-md)',
-                      border: `1px solid ${it.availableQuantity === 0 ? 'rgba(var(--danger-rgb), 0.3)' : 'var(--border)'}`,
-                      background: it.availableQuantity === 0 ? 'var(--danger-bg)' : 'var(--list-row-bg)',
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontSize: 12, fontWeight: 600 }}>{it.productName}</div>
-                      <div className="muted" style={{ fontSize: 11 }}>{it.variantName} · {it.warehouseName}</div>
-                    </div>
-                    <span className={`adm-badge ${it.availableQuantity === 0 ? 'adm-badge--danger' : 'adm-badge--warn'}`}>
-                      {it.availableQuantity} còn
-                    </span>
-                  </div>
-                ))}
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 13 }}>Cảnh báo tồn kho thấp</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>Variants còn &lt; 10 đơn vị</div>
               </div>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Warnings & SLA Issues ── */}
-      <section>
-        <SectionHeader label="Cảnh báo & Sự cố" />
-        <div className="grid grid--2">
-          <div className="card">
-            <div style={{ marginBottom: 14 }}>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>Đơn chờ lâu (SLA risk)</div>
-              <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>Top 10</div>
             </div>
-            <div className="list">
-              {(opsQuery.data?.stagnantOrders ?? []).slice(0, 10).map((o) => (
-                <div className="list__row" key={o.orderId}>
-                  <div className="mono">#{o.orderNumber || o.orderId}</div>
-                  <div className="muted">Còn SLA: {o.minutesToSla != null ? `${o.minutesToSla}m` : 'N/A'}</div>
+            <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {inventoryQuery.isLoading ? (
+                <div className="muted" style={{ fontSize: 13 }}>Đang tải…</div>
+              ) : lowStockItems.length === 0 ? (
+                <div style={{ color: 'var(--emerald)', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  ✓ Tất cả hàng đang đủ tồn kho
+                </div>
+              ) : lowStockItems.map(it => (
+                <div key={it.id} style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  padding: '7px 11px', borderRadius: 10,
+                  border: `1px solid ${it.availableQuantity === 0 ? 'rgba(239,68,68,0.25)' : 'var(--border)'}`,
+                  background: it.availableQuantity === 0 ? 'rgba(239,68,68,0.05)' : 'var(--panel-2)',
+                }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 600 }}>{it.productName}</div>
+                    <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>
+                      {it.variantName} · {it.warehouseName}
+                    </div>
+                  </div>
+                  <span style={{
+                    fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 99,
+                    background: it.availableQuantity === 0 ? 'rgba(239,68,68,0.12)' : 'rgba(245,158,11,0.12)',
+                    color: it.availableQuantity === 0 ? 'var(--danger)' : 'var(--warn)',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {it.availableQuantity} còn
+                  </span>
                 </div>
               ))}
-              {!opsQuery.isLoading && (opsQuery.data?.stagnantOrders ?? []).length === 0 && (
-                <div className="muted">Không có đơn nào</div>
-              )}
             </div>
           </div>
 
-          <div className="card">
-            <div style={{ marginBottom: 14 }}>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>Sự cố đang mở</div>
-              <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
-                Top 10 —{' '}
-                <Link to="/issues" style={{ color: 'var(--primary)' }}>Xem tất cả</Link>
+          {/* SLA risk */}
+          <div style={{
+            background: 'var(--panel)', borderRadius: 'var(--radius-lg)',
+            border: '1px solid var(--border)', overflow: 'hidden',
+            boxShadow: '0 2px 12px -4px rgba(60,20,80,0.07)',
+          }}>
+            <div style={{
+              padding: '14px 18px 12px',
+              borderBottom: '1px solid var(--border)',
+              display: 'flex', alignItems: 'center', gap: 10,
+            }}>
+              <div style={{
+                width: 30, height: 30, borderRadius: 9,
+                background: 'rgba(239,68,68,0.12)',
+                display: 'grid', placeItems: 'center',
+                color: 'var(--danger)',
+              }}>
+                <AlertTriangle size={15} />
+              </div>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 13 }}>Đơn chờ lâu (SLA risk)</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>Top 10 đơn sắp trễ deadline</div>
               </div>
             </div>
-            <div className="list">
-              {(issuesQuery.data ?? []).slice(0, 10).map((it) => (
-                <div className="list__row" key={it.id}>
-                  <Link to={`/issues/${it.id}`} className="mono" style={{ color: 'var(--primary)' }}>
-                    #{it.id}
-                  </Link>
-                  <div className="muted">{it.issueType}</div>
+            <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {opsQuery.isLoading ? (
+                <div className="muted" style={{ fontSize: 13 }}>Đang tải…</div>
+              ) : stagnantOrders.length === 0 ? (
+                <div style={{ color: 'var(--emerald)', fontSize: 13 }}>
+                  ✓ Không có đơn nào sắp trễ SLA
+                </div>
+              ) : stagnantOrders.slice(0, 10).map(o => (
+                <div key={o.orderId} style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  padding: '7px 11px', borderRadius: 10,
+                  border: '1px solid var(--border)',
+                  background: 'var(--panel-2)',
+                }}>
+                  <div style={{ fontWeight: 600, fontSize: 12, fontFamily: 'monospace' }}>
+                    #{o.orderNumber || o.orderId}
+                  </div>
+                  <span style={{
+                    fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 99,
+                    background: 'rgba(239,68,68,0.1)', color: 'var(--danger)',
+                  }}>
+                    {o.minutesToSla != null ? `còn ${o.minutesToSla}m` : 'N/A'}
+                  </span>
                 </div>
               ))}
-              {!issuesQuery.isLoading && (issuesQuery.data ?? []).length === 0 && (
-                <div className="muted">Không có sự cố nào</div>
-              )}
             </div>
           </div>
+
         </div>
       </section>
     </div>

@@ -189,11 +189,11 @@ export function CategoriesPage() {
           <div className="form-grid">
             <label className="adm-field">
               <div className="adm-field__label">{t('fields.categoryCode')}</div>
-              <input className="adm-input" value={categoryCode} onChange={(e) => setCategoryCode(e.target.value)} placeholder="CAT_FRUIT" />
+              <input className="adm-input" value={categoryCode} onChange={(e) => setCategoryCode(e.target.value)} placeholder="VD: CAT_TRAI_CAY" />
             </label>
             <label className="adm-field">
               <div className="adm-field__label">{t('fields.categoryName')}</div>
-              <input className="adm-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Trái cây" />
+              <input className="adm-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: Trái cây, Rau củ, Thịt cá…" />
             </label>
             <label className="adm-field">
               <div className="adm-field__label">Trạng thái</div>
@@ -204,7 +204,7 @@ export function CategoriesPage() {
             </label>
             <label className="adm-field" style={{ gridColumn: '1 / -1' }}>
               <div className="adm-field__label">{t('fields.description')}</div>
-              <input className="adm-input" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="(tùy chọn)" />
+              <input className="adm-input" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Mô tả ngắn về danh mục (không bắt buộc)" />
             </label>
           </div>
           <div className="row-actions">

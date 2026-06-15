@@ -359,11 +359,41 @@ export type AttendanceMonthlyStatsDto = {
   details?: unknown[];
 };
 
+export type AttendanceRankingItem = {
+  userId: number;
+  userFullName: string;
+  lateCount: number;
+  absentCount: number;
+  earlyCount: number;
+  attendedDays: number;
+  score: number;
+};
+
 export type AttendanceInsightDto = {
-  totalStaff: number;
-  activeToday: number;
-  pendingRequests: number;
-  topPerformers: Array<{ userId: number; name: string; score: number }>;
+  chartPoints: Array<{
+    date: string;
+    workedMinutes: number;
+    scheduledMinutes: number;
+    completedBlocks: number;
+    scheduledBlocks: number;
+    late: boolean;
+    early: boolean;
+  }>;
+  lateRanking: AttendanceRankingItem[];
+  absentRanking: AttendanceRankingItem[];
+  earlyRanking: AttendanceRankingItem[];
+  topLateDays: Array<{
+    date: string;
+    shiftType: string;
+    dayStatus: string;
+    scheduledBlocks: number;
+    completedBlocks: number;
+    hasLateCheckIn: boolean;
+    hasEarlyCheckOut: boolean;
+    workedMinutes: number;
+    scheduledMinutes: number;
+  }>;
+  topEarlyDays: unknown[];
 };
 
 const toNumber = (v: unknown): number => {
@@ -688,6 +718,9 @@ export const adminApi = {
     }): Promise<Page<AdminUser>> => {
       return (await apiClient.get('/api/v1/admin/users', { params })) as Page<AdminUser>;
     },
+    count: async (role?: string): Promise<number> => {
+      return (await apiClient.get('/api/v1/admin/users/count', role ? { params: { role } } : undefined)) as number;
+    },
     create: async (payload: {
       fullName: string;
       email: string;
@@ -766,14 +799,15 @@ export const adminApi = {
 
   staffShifts: {
     list: async (status?: string): Promise<ShiftRequest[]> => {
-      const res = (await apiClient.get('/api/admin/attendance/requests', { params: status ? { status } : {} })) as unknown;
-      return Array.isArray(res) ? (res as ShiftRequest[]) : [];
+      const res = (await apiClient.get('/api/v1/admin/shift-requests', { params: status ? { status } : {} })) as unknown;
+      const data = Array.isArray(res) ? res : (res as any)?.content ?? [];
+      return data as ShiftRequest[];
     },
     approve: async (id: number, adminNote?: string): Promise<ShiftRequest> => {
-      return (await apiClient.put(`/api/admin/attendance/requests/${id}/approve`, { adminNote: adminNote ?? '' })) as ShiftRequest;
+      return (await apiClient.put(`/api/v1/admin/shift-requests/${id}/status`, { status: 'APPROVED', adminNote: adminNote ?? '' })) as ShiftRequest;
     },
     reject: async (id: number, adminNote?: string): Promise<ShiftRequest> => {
-      return (await apiClient.put(`/api/admin/attendance/requests/${id}/reject`, { adminNote: adminNote ?? '' })) as ShiftRequest;
+      return (await apiClient.put(`/api/v1/admin/shift-requests/${id}/status`, { status: 'REJECTED', adminNote: adminNote ?? '' })) as ShiftRequest;
     },
   },
 

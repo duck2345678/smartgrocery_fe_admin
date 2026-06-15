@@ -48,15 +48,15 @@ export function WarehousesPage() {
         <div className="form-grid">
           <label className="adm-field">
             <div className="adm-field__label">{t('fields.code')}</div>
-            <input className="adm-input" value={code} onChange={(e) => setCode(e.target.value)} placeholder="WH_MAIN" />
+            <input className="adm-input" value={code} onChange={(e) => setCode(e.target.value)} placeholder="VD: WH_MAIN, WH_HCM" />
           </label>
           <label className="adm-field">
             <div className="adm-field__label">{t('fields.name')}</div>
-            <input className="adm-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Kho Trung Tâm" />
+            <input className="adm-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: Kho Trung Tâm, Kho Miền Nam" />
           </label>
           <label className="adm-field">
             <div className="adm-field__label">{t('fields.location')}</div>
-            <input className="adm-input" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="TP. Thủ Đức" />
+            <input className="adm-input" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="VD: TP. Thủ Đức, Quận 1, Hà Nội" />
           </label>
         </div>
         <div className="row-actions">
