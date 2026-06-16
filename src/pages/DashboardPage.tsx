@@ -1,12 +1,12 @@
-import { useMemo, useState } from 'react';
+﻿import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { adminApi, type OpsOrder } from '../api/adminApi';
 
 const fmt = (n: number) => n.toLocaleString('vi-VN');
-const fmtVnd = (n: number) => Math.round(n).toLocaleString('vi-VN') + '₫';
+const fmtVnd = (n: number) => Math.round(n).toLocaleString('vi-VN') + 'đ';
 
-// ── Date range helpers ──────────────────────────────────────────────────────
+// Date range helpers
 type DateRange = 'today' | '7d' | '30d' | 'month';
 
 const RANGE_LABELS: Record<DateRange, string> = {
@@ -47,7 +47,7 @@ function toLocalDateParam(date = new Date()): string {
   return `${y}-${m}-${d}`;
 }
 
-// ── Sparkline SVG ───────────────────────────────────────────────────────────
+// Sparkline SVG
 function Sparkline({ values }: { values: number[] }) {
   if (values.length < 2) return null;
   const W = 400, H = 60, PX = 4, PY = 6;
@@ -79,7 +79,7 @@ function Sparkline({ values }: { values: number[] }) {
   );
 }
 
-// ── Misc helpers ─────────────────────────────────────────────────────────────
+// Misc helpers
 const statusBadgeClass = (status: string): string => {
   const s = (status ?? '').toUpperCase();
   if (s === 'DELIVERED') return 'adm-badge--success';
@@ -160,7 +160,7 @@ function ProgressBar({ pct, color }: { pct: number; color: string }) {
   );
 }
 
-// ── Page ─────────────────────────────────────────────────────────────────────
+// Page
 export function DashboardPage() {
   const [dateRange, setDateRange] = useState<DateRange>('30d');
 
@@ -253,7 +253,7 @@ export function DashboardPage() {
     return (orderSummaryQuery.data?.sparkline ?? []).map((point) => point.revenue ?? 0);
   }, [orderSummaryQuery.data, dateRange]);
 
-  // ── Other computed values ────────────────────────────────────────────────
+  // Other computed values
   const orderPipeline = useMemo(() => {
     const counts = orderSummaryQuery.data?.statusCounts ?? {};
     const normalizedCounts = Object.entries(counts).reduce<Record<string, number>>((acc, [status, count]) => {
@@ -336,7 +336,7 @@ export function DashboardPage() {
   );
   const totalCustomers = customersQuery.data ?? 0;
 
-  const L = (loading: boolean) => loading ? <span className="muted">…</span> : null;
+  const L = (loading: boolean) => loading ? <span className="muted">...</span> : null;
 
   return (
     <div className="page" style={{ gap: 32 }}>
@@ -347,7 +347,7 @@ export function DashboardPage() {
         </div>
       </div>
 
-      {/* ── Tổng quan kinh doanh ── */}
+      {/* Tổng quan kinh doanh */}
       <section>
         <SectionHeader label="Tổng quan kinh doanh" />
 
@@ -381,11 +381,11 @@ export function DashboardPage() {
             <div className="card__hint">
               Pending:{' '}
               <strong style={{ color: 'var(--warn)' }}>
-                {orderSummaryQuery.isLoading ? '…' : fmt(rangeStats.pending)}
+                {orderSummaryQuery.isLoading ? '...' : fmt(rangeStats.pending)}
               </strong>
               {' · '}Đã giao:{' '}
               <strong style={{ color: 'var(--emerald)' }}>
-                {orderSummaryQuery.isLoading ? '…' : fmt(rangeStats.deliveredCount)}
+                {orderSummaryQuery.isLoading ? '...' : fmt(rangeStats.deliveredCount)}
               </strong>
             </div>
           </div>
@@ -398,7 +398,7 @@ export function DashboardPage() {
             </div>
             <div className="card__hint">
               {orderSummaryQuery.isLoading
-                ? '…'
+                ? '...'
                 : `${fmt(rangeStats.deliveredCount)} đơn đã giao trong kỳ`}
             </div>
             {!orderSummaryQuery.isLoading && sparklineValues.length > 1 && (
@@ -422,7 +422,7 @@ export function DashboardPage() {
         </div>
       </section>
 
-      {/* ── Real-time Operations ── */}
+      {/* Real-time Operations */}
       <section>
         <SectionHeader label="Vận hành thời gian thực" />
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 14 }}>
@@ -450,7 +450,7 @@ export function DashboardPage() {
         </div>
       </section>
 
-      {/* ── Today's Shifts ── */}
+      {/* Today's Shifts */}
       <section>
         <SectionHeader
           label="Nhân sự hôm nay"
@@ -458,7 +458,7 @@ export function DashboardPage() {
         />
         <div className="card">
           {attendanceInsightsQuery.isLoading || todaySchedulesQuery.isLoading ? (
-            <div className="muted" style={{ fontSize: 13 }}>Đang tải…</div>
+            <div className="muted" style={{ fontSize: 13 }}>Đang tải...</div>
           ) : scheduledToday === 0 ? (
             <div className="muted" style={{ fontSize: 13 }}>
               Chưa có lịch làm việc nào cho hôm nay.{' '}
@@ -515,12 +515,12 @@ export function DashboardPage() {
         </div>
       </section>
 
-      {/* ── Order Status Pipeline ── */}
+      {/* Order Status Pipeline */}
       <section>
         <SectionHeader label="Phân bổ đơn hàng" hint="(tất cả thời gian)" />
         <div className="card">
           {orderSummaryQuery.isLoading ? (
-            <div className="muted" style={{ fontSize: 13 }}>Đang tải…</div>
+            <div className="muted" style={{ fontSize: 13 }}>Đang tải...</div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: '12px 32px' }}>
               {(
@@ -553,7 +553,7 @@ export function DashboardPage() {
         </div>
       </section>
 
-      {/* ── Other Operations ── */}
+      {/* Other Operations */}
       <section>
         <SectionHeader label="Hoạt động khác" />
         <div className="grid grid--3">
@@ -588,7 +588,7 @@ export function DashboardPage() {
         </div>
       </section>
 
-      {/* ── Transactions and Stock ── */}
+      {/* Transactions and Stock */}
       <section>
         <SectionHeader label="Giao dịch & Kho" />
         <div className="grid grid--2">
@@ -598,7 +598,7 @@ export function DashboardPage() {
               <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>8 đơn mới nhất</div>
             </div>
             {ordersQuery.isLoading ? (
-              <div className="muted">Đang tải…</div>
+              <div className="muted">Đang tải...</div>
             ) : recentOrders.length === 0 ? (
               <div className="muted">Chưa có đơn hàng</div>
             ) : (
@@ -636,7 +636,7 @@ export function DashboardPage() {
               <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>Variants còn &lt; 10 đơn vị</div>
             </div>
             {inventoryQuery.isLoading ? (
-              <div className="muted">Đang tải…</div>
+              <div className="muted">Đang tải...</div>
             ) : lowStockItems.length === 0 ? (
               <div className="muted" style={{ marginTop: 8 }}>✓ Tất cả hàng đang đủ tồn kho</div>
             ) : (
