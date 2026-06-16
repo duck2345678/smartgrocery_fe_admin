@@ -458,7 +458,14 @@ export function CustomersPage() {
                           <div style={{ fontWeight: 600, display: 'flex', gap: 8, alignItems: 'center' }}>
                             {addr.addressType} {addr.isDefault && <span className="adm-chip" style={{ fontSize: 10, padding: '2px 6px', background: 'var(--ok-bg)', color: 'var(--ok-text)' }}>Mặc định</span>}
                           </div>
-                          <div style={{ fontSize: 13, marginTop: 4 }}>{addr.streetAddress}, {addr.ward}, {addr.district}, {addr.city}</div>
+                          <div style={{ fontSize: 13, marginTop: 4 }}>
+                            {[
+                              addr.streetAddress,
+                              addr.ward,
+                              addr.district && addr.district.toLowerCase() !== addr.city?.toLowerCase() ? addr.district : null,
+                              addr.city
+                            ].filter(Boolean).join(', ')}
+                          </div>
                           <div className="muted" style={{ fontSize: 11 }}>Người nhận: {addr.receiverName} • {addr.receiverPhone}</div>
                         </div>
                       </div>

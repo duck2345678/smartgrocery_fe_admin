@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { Boxes, ChevronLeft, ChevronRight, ClipboardList, LayoutDashboard, LogOut, Moon, Package, Sun, User, Users, Contact, Ticket } from 'lucide-react';
+import { BarChart3, Boxes, ChevronLeft, ChevronRight, ClipboardList, LayoutDashboard, LogOut, Moon, Package, ReceiptText, Sun, User, Users, Contact, Ticket } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../store/authStore';
 import { getAdminLanguage, setAdminLanguage } from '../i18n';
@@ -10,12 +10,14 @@ type AdminTheme = 'dark' | 'light';
 
 const navItems: Array<{ to: string; labelKey: string; icon: React.ReactNode }> = [
   { to: '/', labelKey: 'nav.dashboard', icon: <LayoutDashboard size={18} /> },
+  { to: '/orders', labelKey: 'nav.orders', icon: <ReceiptText size={18} /> },
+  { to: '/revenue', labelKey: 'nav.revenue', icon: <BarChart3 size={18} /> },
   { to: '/catalog/categories', labelKey: 'nav.categories', icon: <Boxes size={18} /> },
-  { to: '/products', labelKey: 'nav.products', icon: <Package size={18} /> },
+  { to: '/catalog/products', labelKey: 'nav.products', icon: <Package size={18} /> },
   { to: '/supply/purchase-orders', labelKey: 'nav.purchaseOrders', icon: <ClipboardList size={18} /> },
-  { to: '/promotions', labelKey: 'nav.promotions', icon: <Ticket size={18} /> },
-  { to: '/customers', labelKey: 'nav.customers', icon: <Users size={18} /> },
-  { to: '/staff-list', labelKey: 'nav.staff', icon: <Contact size={18} /> },
+  { to: '/supply/promotions', labelKey: 'nav.promotions', icon: <Ticket size={18} /> },
+  { to: '/users', labelKey: 'nav.users', icon: <Users size={18} /> },
+  { to: '/staff-management', labelKey: 'nav.staff', icon: <Contact size={18} /> },
   { to: '/profile', labelKey: 'nav.profile', icon: <User size={18} /> },
 ];
 

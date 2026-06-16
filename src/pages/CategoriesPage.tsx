@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+﻿import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { adminApi, type Category } from '../api/adminApi';
@@ -19,6 +19,7 @@ export function CategoriesPage() {
 
   const [showForm,         setShowForm]         = useState(false);
   const [editing,          setEditing]          = useState<Category | null>(null);
+  const [viewing,          setViewing]          = useState<Category | null>(null);
   const [categoryCode,     setCategoryCode]     = useState('');
   const [name,             setName]             = useState('');
   const [description,      setDescription]      = useState('');
@@ -28,6 +29,9 @@ export function CategoriesPage() {
 
   const [deactivateTarget, setDeactivateTarget] = useState<Category | null>(null);
   const [statusFilter,     setStatusFilter]     = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
+  const [search,           setSearch]           = useState('');
+  const [page,             setPage]             = useState(0);
+  const [size,             setSize]             = useState(20);
 
   const resetForm = () => {
     setEditing(null);
@@ -71,18 +75,37 @@ export function CategoriesPage() {
     },
   });
 
+  const activateMutation = useMutation({
+    mutationFn: (category: Category) => adminApi.categories.update(category.id, { isActive: true }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['categories'] });
+    },
+  });
+
   const categories   = useMemo(() => listQuery.data ?? [], [listQuery.data]);
   const activeCount  = useMemo(() => categories.filter((c) => Boolean(c.isActive)).length,      [categories]);
   const inactiveCount = useMemo(() => categories.filter((c) => !c.isActive).length,             [categories]);
   const rootCount    = useMemo(() => categories.filter((c) => !c.parentCategory?.id).length,    [categories]);
 
   const filteredCategories = useMemo(() => {
+    const q = search.trim().toLowerCase();
     return categories.filter((c) => {
-      if (statusFilter === 'ACTIVE') return c.isActive;
-      if (statusFilter === 'INACTIVE') return !c.isActive;
-      return true;
+      const matchesStatus =
+        statusFilter === 'ACTIVE' ? Boolean(c.isActive)
+        : statusFilter === 'INACTIVE' ? !c.isActive
+        : true;
+      if (!matchesStatus) return false;
+      if (!q) return true;
+      const haystack = `${c.categoryCode ?? ''} ${c.name ?? ''}`.toLowerCase();
+      return haystack.includes(q);
     });
-  }, [categories, statusFilter]);
+  }, [categories, statusFilter, search]);
+  const totalPages = Math.max(1, Math.ceil(filteredCategories.length / size));
+  const currentPage = Math.min(page, totalPages - 1);
+  const pagedCategories = useMemo(
+    () => filteredCategories.slice(currentPage * size, currentPage * size + size),
+    [filteredCategories, currentPage, size]
+  );
 
   const products     = useMemo(() => productsQuery.data?.content ?? [], [productsQuery.data]);
   const productCountByCategoryId = useMemo(() => {
@@ -94,8 +117,11 @@ export function CategoriesPage() {
     });
     return counts;
   }, [products]);
-
-  const catById = useMemo(() => Object.fromEntries(categories.map((c) => [c.id, c])), [categories]);
+  const viewingProducts = useMemo(
+    () => viewing ? products.filter((p) => p.category?.id === viewing.id) : [],
+    [products, viewing]
+  );
+  const editingProductCount = editing ? (productCountByCategoryId[editing.id] ?? 0) : 0;
 
   const canSubmit = useMemo(
     () => !!categoryCode.trim() && !!name.trim() && !upsertMutation.isPending,
@@ -105,13 +131,14 @@ export function CategoriesPage() {
   return (
     <div className="page">
 
-      {/* ── Deactivate confirm dialog ── */}
+      {/* â”€â”€ Deactivate confirm dialog â”€â”€ */}
       {deactivateTarget && (
         <div
           style={{
             position: 'fixed', inset: 0, zIndex: 1000,
             background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 16,
           }}
           onClick={() => setDeactivateTarget(null)}
         >
@@ -135,8 +162,85 @@ export function CategoriesPage() {
                 disabled={deactivateMutation.isPending}
                 onClick={() => deactivateMutation.mutate(deactivateTarget.id)}
               >
-                {deactivateMutation.isPending ? 'Đang xử lý…' : 'Xác nhận vô hiệu'}
+                {deactivateMutation.isPending ? 'Đang xử lý...' : 'Xác nhận vô hiệu'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {viewing && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+            padding: 16,
+          }}
+          onClick={() => setViewing(null)}
+        >
+          <div className="modal-content category-detail-modal category-detail-modal--legacy" onClick={(e) => e.stopPropagation()}>
+            <button className="adm-button adm-button--ghost modal-close" type="button" onClick={() => setViewing(null)}>Đóng</button>
+            <div className="card" style={{ boxShadow: 'none' }}>
+              <div className="card__title">{viewing.name}</div>
+              <div className="card__hint">{viewing.categoryCode}</div>
+              <div className="grid category-detail-metrics" style={{ marginTop: 16 }}>
+                <div className="card" style={{ boxShadow: 'none' }}>
+                  <div className="card__label">Trạng thái</div>
+                  <span className={`adm-badge ${viewing.isActive ? 'adm-badge--success' : 'adm-badge--muted'}`}>
+                    {viewing.isActive ? 'Hoạt động' : 'Vô hiệu'}
+                  </span>
+                </div>
+                <div className="card" style={{ boxShadow: 'none' }}>
+                  <div className="card__label">Số sản phẩm</div>
+                  <div className="card__value">{viewingProducts.length}</div>
+                </div>
+              </div>
+              {viewing.description && (
+                <div className="delivery-info" style={{ marginTop: 16 }}>
+                  <div className="delivery-info__label">Mô tả</div>
+                  <div className="delivery-info__address">{viewing.description}</div>
+                </div>
+              )}
+
+              <div className="card__label" style={{ marginTop: 18 }}>Sản phẩm thuộc danh mục</div>
+              {productsQuery.isLoading ? (
+                <div className="muted">Đang tải sản phẩm...</div>
+              ) : viewingProducts.length === 0 ? (
+                <div className="muted">Chưa có sản phẩm trong danh mục này.</div>
+              ) : (
+                <div className="table-wrap category-detail-products" style={{ marginTop: 10 }}>
+                  <table className="adm-table">
+                    <thead>
+                      <tr>
+                        <th>Mã</th>
+                        <th>Sản phẩm</th>
+                        <th>Trạng thái</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {viewingProducts.map((p) => (
+                        <tr key={p.id}>
+                          <td className="mono">{p.productCode}</td>
+                          <td>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                              <div className="order-item-row__thumb">
+                                {p.image ? <img src={p.image} alt={p.name} /> : <span>IMG</span>}
+                              </div>
+                              <span>{p.name}</span>
+                            </div>
+                          </td>
+                          <td>
+                            <span className={`adm-badge ${p.status === 'ACTIVE' ? 'adm-badge--success' : 'adm-badge--muted'}`}>
+                              {p.status ?? '-'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -152,16 +256,16 @@ export function CategoriesPage() {
           type="button"
           onClick={() => { resetForm(); setShowForm((v) => !v); }}
         >
-          {showForm && !editing ? '✕ Đóng' : '+ Thêm danh mục'}
+          {showForm && !editing ? 'Đóng' : '+ Thêm danh mục'}
         </button>
       </div>
 
-      {/* ── KPI cards ── */}
+      {/* â”€â”€ KPI cards â”€â”€ */}
       <div className="grid grid--3">
         <div className="card">
           <div className="card__label">Tổng danh mục</div>
           <div className="card__value">{categories.length}</div>
-          <div className="card__hint">Tất cả (kể cả vô hiệu)</div>
+          <div className="card__hint">Tất cả, kể cả vô hiệu</div>
         </div>
         <div className="card">
           <div className="card__label">Đang hoạt động</div>
@@ -175,7 +279,7 @@ export function CategoriesPage() {
         </div>
       </div>
 
-      {/* ── Create / Edit form (collapsible) ── */}
+      {/* â”€â”€ Create / Edit form (collapsible) â”€â”€ */}
       {showForm && (
         <div className="card">
           <div className="card__label">
@@ -199,12 +303,15 @@ export function CategoriesPage() {
               <div className="adm-field__label">Trạng thái</div>
               <select className="adm-input" value={isActive ? 'true' : 'false'} onChange={(e) => setIsActive(e.target.value === 'true')}>
                 <option value="true">Hoạt động</option>
-                <option value="false">Vô hiệu</option>
+                <option value="false" disabled={editingProductCount > 0}>Vô hiệu</option>
               </select>
+              {editingProductCount > 0 && (
+                <div className="adm-field__hint">Danh mục đang có sản phẩm nên không thể vô hiệu.</div>
+              )}
             </label>
             <label className="adm-field" style={{ gridColumn: '1 / -1' }}>
               <div className="adm-field__label">{t('fields.description')}</div>
-              <input className="adm-input" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="(tùy chọn)" />
+              <input className="adm-input" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Không bắt buộc" />
             </label>
           </div>
           <div className="row-actions">
@@ -218,20 +325,35 @@ export function CategoriesPage() {
         </div>
       )}
 
-      {/* ── Table ── */}
+      {/* â”€â”€ Table â”€â”€ */}
       <div className="card">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, gap: 12, flexWrap: 'wrap' }}>
           <div className="card__label">{t('pages.categoriesTitle')}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <input
+              className="adm-input"
+              style={{ width: 260, margin: 0, padding: '4px 10px', fontSize: 13, height: 32 }}
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+              placeholder="Tìm mã hoặc tên danh mục"
+            />
             <select
               className="adm-input"
               style={{ width: 180, margin: 0, padding: '4px 8px', fontSize: 13, height: 32 }}
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as any)}
+              onChange={(e) => { setStatusFilter(e.target.value as any); setPage(0); }}
             >
               <option value="ALL">Tất cả trạng thái</option>
               <option value="ACTIVE">Đang hoạt động</option>
               <option value="INACTIVE">Đã vô hiệu</option>
+            </select>
+            <select
+              className="adm-input"
+              style={{ width: 110, margin: 0, padding: '4px 8px', fontSize: 13, height: 32 }}
+              value={size}
+              onChange={(e) => { setSize(Number(e.target.value)); setPage(0); }}
+            >
+              {[10, 20, 50, 100].map((n) => <option key={n} value={n}>{n} / trang</option>)}
             </select>
             <span className="adm-chip" style={{ margin: 0 }}>Hiển thị: {filteredCategories.length} / {categories.length}</span>
           </div>
@@ -256,11 +378,12 @@ export function CategoriesPage() {
               ) : filteredCategories.length === 0 ? (
                 <tr><td colSpan={6} className="muted">{t('common.noData')}</td></tr>
               ) : (
-                filteredCategories
+                pagedCategories
                   .slice()
                   .sort((a, b) => a.id - b.id)
                   .map((c) => {
                     const productCount = productCountByCategoryId[c.id] ?? 0;
+                    const canDeactivate = Boolean(c.isActive) && productCount === 0;
                     return (
                       <tr key={c.id}>
                         <td className="mono">{c.id}</td>
@@ -272,7 +395,14 @@ export function CategoriesPage() {
                             {c.isActive ? 'Hoạt động' : 'Vô hiệu'}
                           </span>
                         </td>
-                        <td className="cell-actions">
+                        <td className="cell-actions category-actions">
+                          <button
+                            className="adm-button adm-button--ghost"
+                            type="button"
+                            onClick={() => setViewing(c)}
+                          >
+                            Xem
+                          </button>
                           <button
                             className="adm-button adm-button--ghost"
                             type="button"
@@ -292,11 +422,22 @@ export function CategoriesPage() {
                           <button
                             className="adm-button adm-button--ghost"
                             type="button"
-                            disabled={!c.isActive}
-                            onClick={() => setDeactivateTarget(c)}
-                            style={{ color: c.isActive ? 'var(--danger)' : undefined }}
+                            disabled={
+                              activateMutation.isPending
+                              || deactivateMutation.isPending
+                              || (Boolean(c.isActive) && !canDeactivate)
+                            }
+                            onClick={() => {
+                              if (canDeactivate) {
+                                setDeactivateTarget(c);
+                              } else {
+                                activateMutation.mutate(c);
+                              }
+                            }}
+                            style={{ color: c.isActive ? 'var(--danger)' : 'var(--ok)' }}
+                            title={c.isActive && !canDeactivate ? 'Danh mục đang có sản phẩm nên không thể vô hiệu' : undefined}
                           >
-                            Vô hiệu
+                            {c.isActive ? (canDeactivate ? 'Vô hiệu' : 'Có sản phẩm') : 'Kích hoạt'}
                           </button>
                         </td>
                       </tr>
@@ -306,7 +447,18 @@ export function CategoriesPage() {
             </tbody>
           </table>
         </div>
+        <div className="pager" style={{ marginTop: 12 }}>
+          <div className="pager__info">
+            Tổng: {filteredCategories.length} / Trang {filteredCategories.length > 0 ? currentPage + 1 : 0}/{filteredCategories.length > 0 ? totalPages : 0}
+          </div>
+          <div className="pager__actions">
+            <button className="adm-button adm-button--ghost" type="button" onClick={() => setPage(0)} disabled={currentPage <= 0}>Đầu</button>
+            <button className="adm-button adm-button--ghost" type="button" onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={currentPage <= 0}>Trước</button>
+            <button className="adm-button adm-button--ghost" type="button" onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={filteredCategories.length === 0 || currentPage >= totalPages - 1}>Sau</button>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
+

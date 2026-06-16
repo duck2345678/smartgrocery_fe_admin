@@ -6,7 +6,7 @@ const LANG_KEY = 'SG_ADMIN_LANG';
 const resources = {
   vi: {
     translation: {
-      common: {
+        common: {
         appName: 'SmartGrocery',
         adminConsole: 'Bảng điều khiển Admin',
         commandCenter: 'Trung tâm Chỉ huy',
@@ -40,6 +40,8 @@ const resources = {
       },
       nav: {
         dashboard: 'Dashboard',
+        orders: 'Đơn hàng',
+        revenue: 'Doanh thu',
         auditLogs: 'Audit Logs',
         categories: 'Danh mục',
         products: 'Sản phẩm',
@@ -413,6 +415,8 @@ const resources = {
       },
       nav: {
         dashboard: 'Dashboard',
+        orders: 'Orders',
+        revenue: 'Revenue',
         auditLogs: 'Audit Logs',
         categories: 'Categories',
         products: 'Products',

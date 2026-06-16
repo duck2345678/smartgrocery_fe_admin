@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { useMemo, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { adminApi } from '../api/adminApi';
@@ -28,15 +28,11 @@ export function LoginPage() {
       const normalizedRole = role.startsWith('ROLE_') ? role.slice(5) : role;
       if (normalizedRole !== 'ADMIN' && normalizedRole !== 'STAFF') {
         logout();
-        throw new Error('Bạn không có quyền truy cập admin');
+        throw new Error('Ban khong co quyen truy cap admin');
       }
       setTokens(res.token, res.refreshToken);
       setUser({ ...res.user, roleName: normalizedRole });
-      if (normalizedRole === 'STAFF') {
-        navigate('/staff', { replace: true });
-      } else {
-        navigate('/', { replace: true });
-      }
+      navigate(normalizedRole === 'STAFF' ? '/staff' : '/', { replace: true });
     },
     onError: (error) => {
       setTokens(null, null);
@@ -67,15 +63,11 @@ export function LoginPage() {
         <div className="login-title">{t('login.title')}</div>
         <div className="login-subtitle">{t('login.subtitle')}</div>
 
-        {unauthorized && (
-          <div className="login-alert">{t('login.unauthorized')}</div>
-        )}
+        {unauthorized && <div className="login-alert">{t('login.unauthorized')}</div>}
 
         {loginMutation.isError && (
           <div className="login-alert login-alert--danger">
-            {loginMutation.error instanceof Error 
-              ? loginMutation.error.message 
-              : 'Đã có lỗi xảy ra. Vui lòng thử lại.'}
+            {loginMutation.error instanceof Error ? loginMutation.error.message : 'Dang nhap that bai. Vui long thu lai.'}
           </div>
         )}
 
@@ -83,7 +75,6 @@ export function LoginPage() {
           className="login-form"
           onSubmit={(e) => {
             e.preventDefault();
-            console.debug('Login submit', { email, password });
             if (!canSubmit) return;
             loginMutation.mutate();
           }}
@@ -114,21 +105,8 @@ export function LoginPage() {
           </button>
         </form>
 
-        <div className="login-footnote" style={{ textAlign: 'center', marginTop: '1rem' }}>
-          Chưa có tài khoản?{' '}
-          <Link to="/register" style={{ color: 'var(--color-primary, #16a34a)' }}>
-            Đăng ký
-          </Link>
-        </div>
-
         <div className="login-footnote">
           {t('login.backend')}: {import.meta.env.VITE_API_URL ?? 'http://localhost:8080'}
-        </div>
-
-        <div style={{ marginTop: '16px', fontSize: '12px', opacity: 0.7, borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '12px' }}>
-          <div style={{ marginBottom: '4px' }}>🔐 <strong>Tài khoản test:</strong></div>
-          <div>Email: admin.p0@smartgrocery.com</div>
-          <div>Mật khẩu: password123</div>
         </div>
 
         {debugInfo && (

@@ -48,6 +48,11 @@ export function UsersPage() {
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialog>(null);
   const [dialogReason, setDialogReason] = useState('');
 
+  const changeSize = (nextSize: number) => {
+    setSize(nextSize);
+    setPage(0);
+  };
+
   const query = useQuery({
     queryKey: ['admin-users', page, size, role, status, createdFrom, createdTo, search],
     queryFn: () =>
@@ -251,7 +256,7 @@ export function UsersPage() {
             </label>
             <label className="adm-field">
               <div className="adm-field__label">Vai trò</div>
-              <select className="adm-input" value={role} onChange={(e) => setRole(e.target.value)}>
+              <select className="adm-input" value={role} onChange={(e) => { setRole(e.target.value); setPage(0); }}>
                 <option value="">Tất cả</option>
                 <option value="CUSTOMER">CUSTOMER</option>
                 <option value="STAFF">STAFF</option>
@@ -261,7 +266,7 @@ export function UsersPage() {
             </label>
             <label className="adm-field">
               <div className="adm-field__label">Trạng thái</div>
-              <select className="adm-input" value={status} onChange={(e) => setStatus(e.target.value)}>
+              <select className="adm-input" value={status} onChange={(e) => { setStatus(e.target.value); setPage(0); }}>
                 <option value="">Tất cả</option>
                 <option value="ACTIVE">ACTIVE</option>
                 <option value="INACTIVE">INACTIVE</option>
@@ -270,11 +275,11 @@ export function UsersPage() {
             </label>
             <label className="adm-field">
               <div className="adm-field__label">Từ ngày</div>
-              <input className="adm-input" type="date" value={createdFrom} onChange={(e) => setCreatedFrom(e.target.value)} />
+              <input className="adm-input" type="date" value={createdFrom} onChange={(e) => { setCreatedFrom(e.target.value); setPage(0); }} />
             </label>
             <label className="adm-field">
               <div className="adm-field__label">Đến ngày</div>
-              <input className="adm-input" type="date" value={createdTo} onChange={(e) => setCreatedTo(e.target.value)} />
+              <input className="adm-input" type="date" value={createdTo} onChange={(e) => { setCreatedTo(e.target.value); setPage(0); }} />
             </label>
             <button className="adm-button adm-button--ghost" type="button" onClick={() => query.refetch()}>
               {t('common.search')}
@@ -421,7 +426,8 @@ export function UsersPage() {
                         </span>
                       </td>
                       <td className="mono">{u.createdAt?.slice(0, 10) ?? '-'}</td>
-                      <td className="cell-actions">
+                      <td>
+                        <div className="account-actions">
                         <button
                           className="adm-button adm-button--ghost"
                           type="button"
@@ -455,6 +461,7 @@ export function UsersPage() {
                         >
                           Xóa
                         </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -470,7 +477,8 @@ export function UsersPage() {
           totalElements={query.data?.totalElements}
           size={size}
           onPageChange={setPage}
-          onSizeChange={setSize}
+          onSizeChange={changeSize}
+          sizeOptions={[10, 20, 50, 100]}
         />
       </div>
     </div>

@@ -115,7 +115,10 @@ export type Product = {
     unit?: string | null;
     netPrice: number | null;
     compareAtPrice?: number | null;
+    flashSaleStartsAt?: string | null;
     flashSaleEndsAt?: string | null;
+    flashSaleStockLimit?: number | null;
+    flashSaleSoldCount?: number | null;
     status?: string | null;
     stock?: number | null;
     aisleLocation?: string | null;
@@ -151,6 +154,12 @@ export type InventoryStock = {
   productName: string;
   availableQuantity: number;
   reservedQuantity: number;
+};
+
+export type InventoryListParams = {
+  page?: number;
+  size?: number;
+  search?: string;
 };
 
 export type Warehouse = {
@@ -209,6 +218,7 @@ export type VoucherDto = {
   usageLimitPerVoucher: number;
   usedCount: number;
   status: string;
+  active?: boolean | null;
   hidden?: boolean;
   revealTrigger?: string;
   assignedUserId?: number | null;
@@ -231,7 +241,10 @@ export type AdminProductDiscountRequest = {
   variantIds: number[];
   discountPercentage?: number;
   newNetPrice?: number;
+  flashSaleStartsAt?: string;
   flashSaleEndsAt?: string;
+  flashSaleStockLimit?: number;
+  stopFlashSale?: boolean;
 };
 
 export type Neo4jHealth = {
@@ -282,26 +295,75 @@ export type OrderSummary = {
   status: string;
   totalAmount: number | null;
   createdAt: string | null;
+  customerId?: number | null;
+  customerName?: string | null;
+  customerPhone?: string | null;
+};
+
+export type OrderDashboardSummary = {
+  total: number;
+  pending: number;
+  deliveredCount: number;
+  cancelledCount?: number;
+  revenue: number;
+  previousRevenue?: number;
+  revenueGrowthRate?: number;
+  grossMerchandiseValue?: number;
+  discountTotal?: number;
+  shippingFeeTotal?: number;
+  netRevenue?: number;
+  cancellationRate?: number;
+  statusCounts: Record<string, number>;
+  sparkline: Array<{ date: string; revenue: number }>;
 };
 
 export type OrderItemDto = {
   id: number;
+  variantId?: number | null;
   productName: string;
   variantName: string | null;
   sku: string;
   quantity: number;
   unitPrice: number;
+  subtotal?: number | null;
+  discountAmount?: number | null;
   totalPrice: number;
+  pickedQuantity?: number | null;
+  isSubstituted?: boolean | null;
+  substitutedVariantId?: number | null;
+  substitutionReason?: string | null;
+  imageUrl?: string | null;
 };
 
 export type OrderDto = {
   id: number;
+  userId?: number | null;
+  addressId?: number | null;
+  receiverName?: string | null;
+  receiverPhone?: string | null;
+  addressLine?: string | null;
   orderNumber: string;
+  subtotal?: number | null;
+  discountAmount?: number | null;
+  taxAmount?: number | null;
+  shippingFee?: number | null;
   totalAmount: number;
   status: string;
   paymentMethod: string;
   paymentStatus: string;
+  customerNote?: string | null;
+  assigneeId?: number | null;
+  leaseExpiresAt?: string | null;
+  packingPhotoUrl?: string | null;
+  deliveryPhotoUrl?: string | null;
+  assignedAt?: string | null;
+  pickedAt?: string | null;
+  deliveredAt?: string | null;
+  aiGenerated?: boolean | null;
+  aiListCode?: string | null;
+  aiListName?: string | null;
   createdAt: string;
+  updatedAt?: string | null;
   items?: OrderItemDto[];
 };
 
@@ -348,22 +410,48 @@ export type AdminShiftRequestItemDto = {
   createdAt: string;
 };
 
+export type AdminShiftScheduleItemDto = {
+  id: number;
+  userId: number;
+  userFullName: string | null;
+  workDate: string;
+  shiftType: string;
+  selectedBlocks: string | null;
+  createdAt: string;
+};
+
 export type AttendanceMonthlyStatsDto = {
   year: number;
   month: number;
-  totalShifts: number;
-  presentCount: number;
-  absentCount: number;
-  leaveCount: number;
-  attendanceRate: number;
-  details?: unknown[];
+  startDate?: string | null;
+  endDate?: string | null;
+  scheduledDays?: number;
+  attendedDays?: number;
+  absentDays?: number;
+  lateCheckIns?: number;
+  earlyCheckOuts?: number;
+  onTimeCheckIns?: number;
+  onTimeCheckOuts?: number;
+  totalBlocks?: number;
+  completedBlocks?: number;
+  completionRate?: number;
+  totalWorkedMinutes?: number;
+  totalScheduledMinutes?: number;
+  lateMinutes?: number;
+  earlyMinutes?: number;
+  dailySummaries?: unknown[];
+  chartPoints?: unknown[];
 };
 
 export type AttendanceInsightDto = {
-  totalStaff: number;
-  activeToday: number;
-  pendingRequests: number;
-  topPerformers: Array<{ userId: number; name: string; score: number }>;
+  scheduledToday?: number;
+  activeToday?: number;
+  totalStaff?: number;
+  pendingRequests?: number;
+  topPerformers?: Array<{ userId: number; name: string; score: number }>;
+  lateRanking?: Array<{ userId: number; userFullName: string | null; lateCount: number; absentCount: number; earlyCount: number; attendedDays: number; score: number }>;
+  absentRanking?: Array<{ userId: number; userFullName: string | null; lateCount: number; absentCount: number; earlyCount: number; attendedDays: number; score: number }>;
+  earlyRanking?: Array<{ userId: number; userFullName: string | null; lateCount: number; absentCount: number; earlyCount: number; attendedDays: number; score: number }>;
 };
 
 const toNumber = (v: unknown): number => {
@@ -372,11 +460,21 @@ const toNumber = (v: unknown): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
-const unwrap = <T>(value: unknown): T => {
-  if (value && typeof value === 'object' && 'data' in value) {
-    return (value as { data: T }).data;
-  }
-  return value as T;
+const toPage = <T>(value: unknown, fallbackPage = 0, fallbackSize = 20): Page<T> => {
+  const obj = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+  const pageObj = obj.page && typeof obj.page === 'object' ? obj.page as Record<string, unknown> : {};
+  const content = Array.isArray(obj.content) ? obj.content as T[] : Array.isArray(value) ? value as T[] : [];
+  const size = toNumber(obj.size ?? pageObj.size ?? fallbackSize);
+  const number = toNumber(obj.number ?? pageObj.number ?? fallbackPage);
+  const totalElements = toNumber(obj.totalElements ?? pageObj.totalElements ?? content.length);
+  const totalPages = toNumber(obj.totalPages ?? pageObj.totalPages ?? (size > 0 ? Math.ceil(totalElements / size) : 0));
+  return {
+    content,
+    number,
+    size,
+    totalElements,
+    totalPages,
+  };
 };
 
 const normalizeRoleName = (value: unknown): string => {
@@ -388,11 +486,26 @@ const normalizeRoleName = (value: unknown): string => {
   return role;
 };
 
+const toAttendanceRanking = (value: unknown): NonNullable<AttendanceInsightDto['lateRanking']> => {
+  const list = Array.isArray(value) ? value : [];
+  return list.map((item) => {
+    const obj = item && typeof item === 'object' ? item as Record<string, unknown> : {};
+    return {
+      userId: toNumber(obj.userId),
+      userFullName: obj.userFullName == null ? null : String(obj.userFullName),
+      lateCount: toNumber(obj.lateCount),
+      absentCount: toNumber(obj.absentCount),
+      earlyCount: toNumber(obj.earlyCount),
+      attendedDays: toNumber(obj.attendedDays),
+      score: toNumber(obj.score),
+    };
+  });
+};
+
 export const adminApi = {
   auth: {
     login: async (email: string, password: string): Promise<AuthResponse> => {
-      const response = await apiClient.post('/api/v1/auth/login', { email, password });
-      const payload = unwrap<AuthResponse>(response);
+      const payload = (await apiClient.post('/api/v1/auth/login', { email, password })) as AuthResponse;
       return {
         ...payload,
         user: {
@@ -400,9 +513,6 @@ export const adminApi = {
           roleName: normalizeRoleName(payload.user?.roleName),
         },
       };
-    },
-    register: async (payload: { email: string; password: string; fullName: string; phone: string }): Promise<AuthResponse> => {
-      return (await apiClient.post('/api/v1/auth/register', payload)) as AuthResponse;
     },
     logout: async (refreshToken: string): Promise<void> => {
       await apiClient.post('/api/v1/auth/logout', { refreshToken });
@@ -502,7 +612,7 @@ export const adminApi = {
       if (filters?.search) params.search = filters.search;
       if (filters?.categoryId) params.categoryId = filters.categoryId;
       if (filters?.status) params.status = filters.status;
-      return (await apiClient.get('/api/v1/admin/products', { params })) as Page<Product>;
+      return toPage<Product>(await apiClient.get('/api/v1/admin/products', { params }), page, size);
     },
     adminList: async (params: {
       search?: string;
@@ -511,8 +621,13 @@ export const adminApi = {
       discounted?: boolean;
       page?: number;
       size?: number;
+      sort?: string;
     }): Promise<Page<Product>> => {
-      return (await apiClient.get('/api/v1/admin/products', { params })) as Page<Product>;
+      return toPage<Product>(
+        await apiClient.get('/api/v1/admin/products', { params }),
+        params.page ?? 0,
+        params.size ?? 20,
+      );
     },
     createOrUpdateMultipart: async (
       mode: 'create' | 'update',
@@ -589,13 +704,11 @@ export const adminApi = {
   },
 
   inventory: {
-    listAll: async (): Promise<InventoryStock[]> => {
-      const res = (await apiClient.get('/api/admin/inventory')) as unknown;
-      return Array.isArray(res) ? (res as InventoryStock[]) : [];
+    listAll: async (params: InventoryListParams = {}): Promise<Page<InventoryStock>> => {
+      return (await apiClient.get('/api/admin/inventory', { params })) as Page<InventoryStock>;
     },
-    byWarehouse: async (warehouseId: number): Promise<InventoryStock[]> => {
-      const res = (await apiClient.get(`/api/admin/inventory/warehouse/${warehouseId}`)) as unknown;
-      return Array.isArray(res) ? (res as InventoryStock[]) : [];
+    byWarehouse: async (warehouseId: number, params: InventoryListParams = {}): Promise<Page<InventoryStock>> => {
+      return (await apiClient.get(`/api/admin/inventory/warehouse/${warehouseId}`, { params })) as Page<InventoryStock>;
     },
   },
 
@@ -686,7 +799,15 @@ export const adminApi = {
       page?: number;
       size?: number;
     }): Promise<Page<AdminUser>> => {
-      return (await apiClient.get('/api/v1/admin/users', { params })) as Page<AdminUser>;
+      return toPage<AdminUser>(
+        await apiClient.get('/api/v1/admin/users', { params }),
+        params.page ?? 0,
+        params.size ?? 20,
+      );
+    },
+    count: async (role?: string): Promise<number> => {
+      const value = (await apiClient.get('/api/v1/admin/users/count', { params: role ? { role } : {} })) as unknown;
+      return toNumber(value);
     },
     create: async (payload: {
       fullName: string;
@@ -748,53 +869,96 @@ export const adminApi = {
     getDetail: async (orderId: number): Promise<OrderSummary & { items?: unknown[] }> => {
       return (await apiClient.get(`/api/v1/orders/admin/${orderId}`)) as OrderSummary & { items?: unknown[] };
     },
+    list: async (params: {
+      page?: number;
+      size?: number;
+      search?: string;
+      status?: string;
+      from?: string;
+      to?: string;
+      sortBy?: string;
+      sortDir?: 'asc' | 'desc';
+    } = {}): Promise<Page<OrderSummary>> => {
+      return toPage<OrderSummary>(
+        await apiClient.get('/api/v1/admin/orders', { params }),
+        params.page ?? 0,
+        params.size ?? 20,
+      );
+    },
     listAll: async (): Promise<OrderSummary[]> => {
-      const res = (await apiClient.get('/api/v1/orders/admin/all')) as unknown;
-      const list = Array.isArray(res) ? res : [];
-      return list.map((x) => {
-        const o = x as Record<string, unknown>;
-        return {
-          id: toNumber(o.id),
-          orderNumber: o.orderNumber != null ? String(o.orderNumber) : null,
-          status: String(o.status ?? ''),
-          totalAmount: o.totalAmount != null ? toNumber(o.totalAmount) : null,
-          createdAt: o.createdAt != null ? String(o.createdAt) : null,
-        };
-      });
+      const page = toPage<OrderSummary>(
+        await apiClient.get('/api/v1/admin/orders', { params: { page: 0, size: 100 } }),
+        0,
+        100,
+      );
+      return page.content ?? [];
+    },
+    getDashboardSummary: async (params: { from?: string; to?: string } = {}): Promise<OrderDashboardSummary> => {
+      return (await apiClient.get('/api/v1/admin/orders/dashboard-summary', { params })) as OrderDashboardSummary;
     },
   },
 
   staffShifts: {
-    list: async (status?: string): Promise<ShiftRequest[]> => {
-      const res = (await apiClient.get('/api/admin/attendance/requests', { params: status ? { status } : {} })) as unknown;
-      return Array.isArray(res) ? (res as ShiftRequest[]) : [];
+    list: async (status?: string): Promise<AdminShiftRequestItemDto[]> => {
+      return (await apiClient.get('/api/v1/admin/shift-requests', { params: status ? { status } : {} })) as AdminShiftRequestItemDto[];
     },
-    approve: async (id: number, adminNote?: string): Promise<ShiftRequest> => {
-      return (await apiClient.put(`/api/admin/attendance/requests/${id}/approve`, { adminNote: adminNote ?? '' })) as ShiftRequest;
+    approve: async (id: number, adminNote?: string): Promise<void> => {
+      await apiClient.put(`/api/v1/admin/shift-requests/${id}/status`, { status: 'APPROVED', adminNote: adminNote ?? '' });
     },
-    reject: async (id: number, adminNote?: string): Promise<ShiftRequest> => {
-      return (await apiClient.put(`/api/admin/attendance/requests/${id}/reject`, { adminNote: adminNote ?? '' })) as ShiftRequest;
+    reject: async (id: number, adminNote?: string): Promise<void> => {
+      await apiClient.put(`/api/v1/admin/shift-requests/${id}/status`, { status: 'REJECTED', adminNote: adminNote ?? '' });
     },
   },
 
   shiftRequests: {
     list: async (params: { from?: string; to?: string; status?: string }): Promise<AdminShiftRequestItemDto[]> => {
-      const res = await apiClient.get('/api/v1/admin/shift-requests', { params });
-      return unwrap<AdminShiftRequestItemDto[]>(res);
+      return (await apiClient.get('/api/v1/admin/shift-requests', { params })) as AdminShiftRequestItemDto[];
     },
     updateStatus: async (id: number, payload: { status: 'APPROVED' | 'REJECTED'; adminNote?: string }): Promise<void> => {
       await apiClient.put(`/api/v1/admin/shift-requests/${id}/status`, payload);
     },
   },
 
+  shiftSchedules: {
+    list: async (params: { from?: string; to?: string }): Promise<AdminShiftScheduleItemDto[]> => {
+      return (await apiClient.get('/api/v1/admin/shift-requests/schedules', { params })) as AdminShiftScheduleItemDto[];
+    },
+  },
+
   attendance: {
     getMonthlyStats: async (userId: number, year: number, month: number): Promise<AttendanceMonthlyStatsDto> => {
-      const res = await apiClient.get(`/api/v1/admin/attendance/monthly-stats/${userId}`, { params: { year, month } });
-      return unwrap<AttendanceMonthlyStatsDto>(res);
+      return (await apiClient.get(`/api/v1/admin/attendance/monthly-stats/${userId}`, { params: { year, month } })) as AttendanceMonthlyStatsDto;
     },
     getInsights: async (year: number, month: number): Promise<AttendanceInsightDto> => {
-      const res = await apiClient.get('/api/v1/admin/attendance/insights', { params: { year, month } });
-      return unwrap<AttendanceInsightDto>(res);
+      const res = (await apiClient.get('/api/v1/admin/attendance/insights', { params: { year, month } })) as unknown;
+      const obj = res && typeof res === 'object' ? res as Record<string, unknown> : {};
+      const lateRanking = toAttendanceRanking(obj.lateRanking);
+      const absentRanking = toAttendanceRanking(obj.absentRanking);
+      const earlyRanking = toAttendanceRanking(obj.earlyRanking);
+      const rankingSource = lateRanking.length > 0 ? lateRanking : absentRanking.length > 0 ? absentRanking : earlyRanking;
+      return {
+        scheduledToday: toNumber(obj.scheduledToday),
+        activeToday: toNumber(obj.activeToday),
+        totalStaff: toNumber(obj.totalStaff),
+        pendingRequests: toNumber(obj.pendingRequests),
+        topPerformers: Array.isArray(obj.topPerformers)
+          ? obj.topPerformers.map((item) => {
+              const performer = item && typeof item === 'object' ? item as Record<string, unknown> : {};
+              return {
+                userId: toNumber(performer.userId),
+                name: String(performer.name ?? ''),
+                score: toNumber(performer.score),
+              };
+            })
+          : rankingSource.map((item) => ({
+              userId: item.userId,
+              name: item.userFullName ?? `Staff #${item.userId}`,
+              score: item.score,
+            })),
+        lateRanking,
+        absentRanking,
+        earlyRanking,
+      };
     },
   },
 

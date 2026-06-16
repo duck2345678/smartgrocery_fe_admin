@@ -5,6 +5,8 @@ import { useTranslation } from 'react-i18next';
 import { adminApi, type Category, type Product, type ProductVariantPayload } from '../api/adminApi';
 
 type ProductStatus = 'ACTIVE' | 'HIDDEN' | 'DELETED';
+type ProductSortKey = 'id' | 'productCode' | 'name' | 'category.name' | 'status';
+type SortDir = 'asc' | 'desc';
 
 type VariantForm = {
   id?: number;
@@ -52,6 +54,8 @@ export function ProductsPage() {
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [sortKey, setSortKey] = useState<ProductSortKey>('id');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -68,8 +72,9 @@ export function ProductsPage() {
       search: search || undefined,
       categoryId: categoryFilter ? Number(categoryFilter) : undefined,
       status: statusFilter || undefined,
+      sort: `${sortKey},${sortDir}`,
     }),
-    [categoryFilter, page, search, size, statusFilter]
+    [categoryFilter, page, search, size, sortDir, sortKey, statusFilter]
   );
 
   const listQuery = useQuery({
@@ -291,11 +296,37 @@ export function ProductsPage() {
   });
 
   const items = listQuery.data?.content ?? [];
+  const currentPage = listQuery.data ? Math.max(0, Number(listQuery.data.number) || 0) : 0;
+  const pageTotal = listQuery.data ? Math.max(0, Number(listQuery.data.totalPages) || 0) : 0;
+  const pageLabel = pageTotal > 0 ? currentPage + 1 : 0;
+  const productTotal = listQuery.data?.totalElements ?? 0;
   const activeCount = summary?.activeCount ?? 0;
   const hiddenCount = summary?.hiddenCount ?? 0;
   const deletedCount = summary?.deletedCount ?? 0;
   const totalElements = summary?.totalCount ?? (listQuery.data?.totalElements ?? 0);
   const canSubmit = validationErrors.length === 0 && !upsertMutation.isPending;
+
+  const toggleSort = (key: ProductSortKey) => {
+    setPage(0);
+    if (sortKey === key) {
+      setSortDir((dir) => (dir === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setSortKey(key);
+    setSortDir('asc');
+  };
+
+  const sortHeader = (key: ProductSortKey, label: string) => (
+    <button
+      className={`table-sort ${sortKey === key ? 'is-active' : ''}`}
+      type="button"
+      onClick={() => toggleSort(key)}
+      aria-sort={sortKey === key ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
+    >
+      <span>{label}</span>
+      <span className="table-sort__icon">{sortKey === key ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}</span>
+    </button>
+  );
 
   const updateVariant = (index: number, patch: Partial<VariantForm>) => {
     setVariants((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
@@ -348,7 +379,7 @@ export function ProductsPage() {
         <div className="card">
           <div className="card__label">{t('table.total')}</div>
           <div className="card__value">{totalElements}</div>
-          <div className="card__hint">{t('table.page')} {listQuery.data ? listQuery.data.number + 1 : 0}</div>
+          <div className="card__hint">{t('table.page')} {pageLabel}</div>
         </div>
         <div className="card">
           <div className="card__label">{t('products.statusActive')}</div>
@@ -409,8 +440,8 @@ export function ProductsPage() {
       </div>
 
       {isFormOpen && (
-        <div className="modal-overlay">
-          <div className="modal-content card" style={{ margin: 0 }}>
+        <div className="modal-overlay product-modal-overlay">
+          <div className="modal-content card product-editor-modal" style={{ margin: 0 }}>
             <button className="adm-button adm-button--ghost modal-close" onClick={resetForm}>
               <X size={20} />
             </button>
@@ -566,22 +597,20 @@ export function ProductsPage() {
       <div className="card">
         <div className="row-actions row-actions--between">
           <div className="card__label">{t('pages.productsTitle')}</div>
-          <div className="adm-chip">{t('table.total')}: {listQuery.data?.totalElements ?? 0}</div>
+          <div className="adm-chip">{t('table.total')}: {productTotal}</div>
         </div>
         <div className="table-wrap">
-          <table className="adm-table">
+          <table className="adm-table products-table">
             <thead>
               <tr>
-                <th>{t('table.id')}</th>
+                <th>{sortHeader('id', t('table.id'))}</th>
                 <th>{t('table.code')}</th>
-                <th>{t('table.name')}</th>
-                <th>{t('table.category')}</th>
+                <th>{sortHeader('name', t('table.name'))}</th>
+                <th>{sortHeader('category.name', t('table.category'))}</th>
                 <th>{t('table.sku')}</th>
-                <th>{t('fields.color')}</th>
-                <th>{t('fields.variantSize')}</th>
                 <th>{t('table.price')}</th>
                 <th>{t('table.stock')}</th>
-                <th>{t('table.status')}</th>
+                <th>{sortHeader('status', t('table.status'))}</th>
                 <th>{t('table.actions')}</th>
               </tr>
             </thead>
@@ -589,16 +618,16 @@ export function ProductsPage() {
               {listQuery.isLoading ? (
                 Array.from({ length: 5 }).map((_, index) => (
                   <tr key={index}>
-                    <td colSpan={11}><div className="skeleton-line" /></td>
+                    <td colSpan={9}><div className="skeleton-line" /></td>
                   </tr>
                 ))
               ) : listQuery.isError ? (
                 <tr>
-                  <td colSpan={11} className="muted">{listQuery.error instanceof Error ? listQuery.error.message : t('messages.loadProductsFailed')}</td>
+                  <td colSpan={9} className="muted">{listQuery.error instanceof Error ? listQuery.error.message : t('messages.loadProductsFailed')}</td>
                 </tr>
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="muted">{t('products.emptyState')}</td>
+                  <td colSpan={9} className="muted">{t('products.emptyState')}</td>
                 </tr>
               ) : (
                 items.map((p) => {
@@ -606,29 +635,21 @@ export function ProductsPage() {
                   return (
                     <tr key={p.id} className={p.status === 'DELETED' ? 'row-muted' : undefined}>
                       <td className="mono">{p.id}</td>
+                      <td className="mono">{p.productCode ?? '-'}</td>
                       <td>
-                        {p.image ? (
-                          <img
-                            src={p.image}
-                            alt=""
-                            style={{ width: 36, height: 36, borderRadius: 8, objectFit: 'cover', display: 'block' }}
-                          />
-                        ) : (
-                          <div style={{
-                            width: 36, height: 36, borderRadius: 8,
-                            background: 'var(--grad-secondary)',
-                            display: 'grid', placeItems: 'center',
-                            fontSize: 13, fontWeight: 700, color: '#fff',
-                          }}>
-                            {(p.name ?? '?').slice(0, 1).toUpperCase()}
-                          </div>
-                        )}
+                        <div className="product-name-cell">
+                          {p.image ? (
+                            <img src={p.image} alt="" className="product-name-cell__image" />
+                          ) : (
+                            <div className="product-name-cell__placeholder">
+                              {(p.name ?? '?').slice(0, 1).toUpperCase()}
+                            </div>
+                          )}
+                          <span>{p.name}</span>
+                        </div>
                       </td>
-                      <td>{p.name}</td>
                       <td>{p.category?.name ?? '-'}</td>
                       <td className="mono">{v?.sku ?? '-'}</td>
-                      <td>{v?.color ?? '-'}</td>
-                      <td>{v?.size ?? '-'}</td>
                       <td className="mono">{v?.netPrice != null ? fmtPrice(v.netPrice) : '-'}</td>
                       <td className="mono">{v?.stock != null ? String(v.stock) : '-'}</td>
                       <td>
@@ -665,7 +686,7 @@ export function ProductsPage() {
 
         <div className="pager">
           <div className="muted">
-            {t('table.total')}: {listQuery.data?.totalElements ?? 0} / {t('table.page')} {listQuery.data ? listQuery.data.number + 1 : 0}/{listQuery.data?.totalPages ?? 0}
+            {t('table.total')}: {productTotal} / {t('table.page')} {pageLabel}/{pageTotal}
           </div>
           <div className="pager__actions">
             <label className="adm-field" style={{ minWidth: 120 }}>
@@ -678,7 +699,7 @@ export function ProductsPage() {
             </label>
             <button className="adm-button adm-button--ghost" type="button" onClick={() => setPage(0)} disabled={!listQuery.data || page <= 0}>{t('table.first')}</button>
             <button className="adm-button adm-button--ghost" type="button" onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={!listQuery.data || page <= 0}>{t('table.prev')}</button>
-            <button className="adm-button adm-button--ghost" type="button" onClick={() => setPage((p) => (listQuery.data ? Math.min(listQuery.data.totalPages - 1, p + 1) : p))} disabled={!listQuery.data || page >= (listQuery.data.totalPages ?? 1) - 1}>{t('table.next')}</button>
+            <button className="adm-button adm-button--ghost" type="button" onClick={() => setPage((p) => Math.min(Math.max(0, pageTotal - 1), p + 1))} disabled={!listQuery.data || pageTotal <= 0 || page >= pageTotal - 1}>{t('table.next')}</button>
           </div>
         </div>
       </div>

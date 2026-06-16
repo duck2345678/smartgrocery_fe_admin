@@ -5,6 +5,8 @@ import { AdminLayout } from './layout/AdminLayout';
 import { useAuthStore } from './store/authStore';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { OrdersPage } from './pages/OrdersPage';
+import { RevenuePage } from './pages/RevenuePage';
 import { CategoriesPage } from './pages/CategoriesPage';
 import { ProductsPage } from './pages/ProductsPage';
 import { InventoryPage } from './pages/InventoryPage';
@@ -20,8 +22,6 @@ import { StaffProtectedRoute } from './components/StaffProtectedRoute';
 import { StaffLayout } from './layout/StaffLayout';
 import { StaffDashboardPage } from './pages/StaffDashboardPage';
 import { StaffCustomersPage } from './pages/StaffCustomersPage';
-import { RegisterPage } from './pages/RegisterPage';
-import { CustomersPage } from './pages/CustomersPage';
 import { StaffPage } from './pages/StaffPage';
 
 export default function App() {
@@ -34,11 +34,12 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<RegisterPage />} />
 
       <Route element={<ProtectedRoute />}>
         <Route element={<AdminLayout />}>
           <Route index element={<DashboardPage />} />
+          <Route path="orders" element={<OrdersPage />} />
+          <Route path="revenue" element={<RevenuePage />} />
           <Route path="catalog/categories" element={<CategoriesPage />} />
           <Route path="catalog/products" element={<ProductsPage />} />
           <Route path="supply/inventory" element={<InventoryPage />} />
@@ -50,10 +51,6 @@ export default function App() {
           <Route path="issues/:id" element={<AdminIssueDetailPage />} />
           <Route path="ai-health" element={<AiHealthPage />} />
           <Route path="profile" element={<ProfilePage />} />
-          <Route path="/customers" element={<CustomersPage />} />
-          <Route path="/staff-list" element={<StaffPage />} />
-          <Route path="/products" element={<ProductsPage />} />
-          <Route path="/promotions" element={<PromotionsPage />} />
         </Route>
       </Route>
 

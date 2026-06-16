@@ -108,9 +108,11 @@ describe('ProductsPage', () => {
   });
 
   it('keeps submit disabled until required product and variant data are valid', async () => {
+    const user = userEvent.setup();
     renderPage();
 
     expect(await screen.findAllByText('Apple')).not.toHaveLength(0);
-    expect(screen.getByRole('button', { name: /Create product/i })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: /Create product/i }));
+    expect(screen.getAllByRole('button', { name: /Create product/i }).at(-1)).toBeDisabled();
   });
 });

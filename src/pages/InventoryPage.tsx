@@ -6,59 +6,53 @@ import { adminApi, type InventoryStock, type Warehouse } from '../api/adminApi';
 type SortDir = 'asc' | 'desc';
 
 function StockBadge({ qty, threshold }: { qty: number; threshold: number }) {
-  if (qty === 0)          return <span className="adm-badge adm-badge--danger">Hết hàng</span>;
-  if (qty <= threshold)   return <span className="adm-badge adm-badge--warn">Tồn thấp</span>;
-  return                         <span className="adm-badge adm-badge--success">Ổn định</span>;
+  if (qty === 0) return <span className="adm-badge adm-badge--danger">Het hang</span>;
+  if (qty <= threshold) return <span className="adm-badge adm-badge--warn">Ton thap</span>;
+  return <span className="adm-badge adm-badge--success">On dinh</span>;
 }
 
 export function InventoryPage() {
   const { t } = useTranslation();
 
   const [warehouseId, setWarehouseId] = useState<string>('all');
-  const [search,      setSearch]      = useState('');
-  const [threshold,   setThreshold]   = useState(10);
-  const [sortDir,     setSortDir]     = useState<SortDir>('asc');
+  const [search, setSearch] = useState('');
+  const [threshold, setThreshold] = useState(10);
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [page, setPage] = useState(0);
+  const [size, setSize] = useState(20);
 
   const warehousesQuery = useQuery({
     queryKey: ['warehouses'],
-    queryFn:  () => adminApi.warehouses.list(),
+    queryFn: () => adminApi.warehouses.list(),
     staleTime: 30000,
   });
 
   const inventoryQuery = useQuery({
-    queryKey: ['inventory', warehouseId],
-    queryFn:  () =>
+    queryKey: ['inventory', warehouseId, page, size, search],
+    queryFn: () =>
       warehouseId === 'all'
-        ? adminApi.inventory.listAll()
-        : adminApi.inventory.byWarehouse(Number(warehouseId)),
+        ? adminApi.inventory.listAll({ page, size, search: search.trim() || undefined })
+        : adminApi.inventory.byWarehouse(Number(warehouseId), { page, size, search: search.trim() || undefined }),
   });
 
-  const allRows = useMemo(() => inventoryQuery.data ?? [], [inventoryQuery.data]);
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return allRows;
-    return allRows.filter(
-      (r) =>
-        r.productName.toLowerCase().includes(q) ||
-        r.variantName.toLowerCase().includes(q),
-    );
-  }, [allRows, search]);
-
+  const allRows = useMemo(() => inventoryQuery.data?.content ?? [], [inventoryQuery.data]);
   const rows = useMemo(
     () =>
-      [...filtered].sort((a, b) => {
+      [...allRows].sort((a, b) => {
         const diff = (a.availableQuantity ?? 0) - (b.availableQuantity ?? 0);
         return sortDir === 'asc' ? diff : -diff;
       }),
-    [filtered, sortDir],
+    [allRows, sortDir],
   );
 
-  // Stats computed from full dataset (not filtered)
-  const outCount   = useMemo(() => allRows.filter((r) => (r.availableQuantity ?? 0) === 0).length, [allRows]);
-  const lowCount   = useMemo(() => allRows.filter((r) => { const q = r.availableQuantity ?? 0; return q > 0 && q <= threshold; }).length, [allRows, threshold]);
+  const outCount = useMemo(() => allRows.filter((r) => (r.availableQuantity ?? 0) === 0).length, [allRows]);
+  const lowCount = useMemo(
+    () => allRows.filter((r) => { const q = r.availableQuantity ?? 0; return q > 0 && q <= threshold; }).length,
+    [allRows, threshold],
+  );
   const totalAvail = useMemo(() => allRows.reduce((s, r) => s + (r.availableQuantity ?? 0), 0), [allRows]);
-
+  const totalElements = inventoryQuery.data?.totalElements ?? 0;
+  const totalPages = inventoryQuery.data?.totalPages ?? 0;
   const selectedWarehouse = warehousesQuery.data?.find((w) => String(w.id) === warehouseId);
 
   return (
@@ -70,51 +64,59 @@ export function InventoryPage() {
         </div>
       </div>
 
-      {/* ── KPI cards ── */}
       <div className="grid grid--4">
         <div className="card">
-          <div className="card__label">Tổng mặt hàng</div>
-          <div className="card__value">{allRows.length}</div>
-          <div className="card__hint">{warehouseId === 'all' ? 'Tất cả kho' : (selectedWarehouse?.name ?? 'Kho đã chọn')}</div>
+          <div className="card__label">Tong mat hang</div>
+          <div className="card__value">{totalElements.toLocaleString('vi-VN')}</div>
+          <div className="card__hint">{warehouseId === 'all' ? 'Tat ca kho' : (selectedWarehouse?.name ?? 'Kho da chon')}</div>
         </div>
         <div className="card">
-          <div className="card__label">Hết hàng</div>
+          <div className="card__label">Het hang</div>
           <div className="card__value" style={{ color: outCount > 0 ? 'var(--danger)' : undefined }}>
             {outCount}
           </div>
-          <div className="card__hint">Số lượng = 0</div>
+          <div className="card__hint">Trong trang hien tai</div>
         </div>
         <div className="card">
-          <div className="card__label">Tồn thấp</div>
+          <div className="card__label">Ton thap</div>
           <div className="card__value" style={{ color: lowCount > 0 ? 'var(--warn)' : undefined }}>
             {lowCount}
           </div>
-          <div className="card__hint">1 – {threshold} đơn vị</div>
+          <div className="card__hint">1 - {threshold} don vi, trang hien tai</div>
         </div>
         <div className="card">
-          <div className="card__label">Tổng khả dụng</div>
+          <div className="card__label">Tong kha dung</div>
           <div className="card__value">{totalAvail.toLocaleString('vi-VN')}</div>
-          <div className="card__hint">Sẵn bán (chưa gồm reserved)</div>
+          <div className="card__hint">San ban trong trang hien tai</div>
         </div>
       </div>
 
-      {/* ── Filters ── */}
       <div className="card">
         <div className="filters">
           <div className="filters__row">
             <label className="adm-field" style={{ flex: 2 }}>
-              <div className="adm-field__label">Tìm sản phẩm / biến thể</div>
+              <div className="adm-field__label">Tim san pham / bien the</div>
               <input
                 className="adm-input"
-                placeholder="Nhập tên sản phẩm hoặc biến thể…"
+                placeholder="Nhap ten san pham hoac bien the..."
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(0);
+                }}
               />
             </label>
             <label className="adm-field" style={{ minWidth: 200 }}>
-              <div className="adm-field__label">Kho hàng</div>
-              <select className="adm-input" value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)}>
-                <option value="all">Tất cả kho</option>
+              <div className="adm-field__label">Kho hang</div>
+              <select
+                className="adm-input"
+                value={warehouseId}
+                onChange={(e) => {
+                  setWarehouseId(e.target.value);
+                  setPage(0);
+                }}
+              >
+                <option value="all">Tat ca kho</option>
                 {(warehousesQuery.data ?? []).map((w: Warehouse) => (
                   <option key={w.id} value={String(w.id)}>
                     {w.name} (#{w.id})
@@ -123,7 +125,7 @@ export function InventoryPage() {
               </select>
             </label>
             <label className="adm-field" style={{ minWidth: 150 }}>
-              <div className="adm-field__label">Ngưỡng tồn thấp</div>
+              <div className="adm-field__label">Nguong ton thap</div>
               <input
                 className="adm-input"
                 type="number"
@@ -137,21 +139,24 @@ export function InventoryPage() {
         </div>
       </div>
 
-      {/* ── Table ── */}
       <div className="card">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <div className="card__label">Danh sách tồn kho</div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <span className="adm-chip">
-              Hiển thị: {rows.length} / {allRows.length}
-            </span>
-            {(outCount > 0 || lowCount > 0) && (
-              <span className="adm-badge adm-badge--danger">
-                {outCount > 0 && `${outCount} hết hàng`}
-                {outCount > 0 && lowCount > 0 && ' · '}
-                {lowCount > 0 && `${lowCount} tồn thấp`}
-              </span>
-            )}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+          <div className="card__label">Danh sach ton kho</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <span className="adm-chip">Hien thi: {rows.length} / {totalElements}</span>
+            <select
+              className="adm-input"
+              style={{ width: 104, height: 32, fontSize: 12 }}
+              value={size}
+              onChange={(e) => {
+                setSize(Number(e.target.value));
+                setPage(0);
+              }}
+            >
+              <option value={10}>10 / trang</option>
+              <option value={20}>20 / trang</option>
+              <option value={50}>50 / trang</option>
+            </select>
           </div>
         </div>
 
@@ -161,17 +166,17 @@ export function InventoryPage() {
               <tr>
                 <th>ID</th>
                 <th>Kho</th>
-                <th>Biến thể</th>
-                <th>Sản phẩm</th>
+                <th>Bien the</th>
+                <th>San pham</th>
                 <th
                   style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
                   onClick={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
                 >
-                  Khả dụng&nbsp;{sortDir === 'asc' ? '↑' : '↓'}
+                  Kha dung&nbsp;{sortDir === 'asc' ? '↑' : '↓'}
                 </th>
                 <th>Reserved</th>
-                <th>Tổng tồn</th>
-                <th>Trạng thái</th>
+                <th>Tong ton</th>
+                <th>Trang thai</th>
               </tr>
             </thead>
             <tbody>
@@ -180,17 +185,15 @@ export function InventoryPage() {
               ) : inventoryQuery.isError ? (
                 <tr>
                   <td colSpan={8} className="muted">
-                    {inventoryQuery.error instanceof Error
-                      ? inventoryQuery.error.message
-                      : t('messages.loadInventoryFailed')}
+                    {inventoryQuery.error instanceof Error ? inventoryQuery.error.message : t('messages.loadInventoryFailed')}
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr><td colSpan={8} className="muted">{t('common.noData')}</td></tr>
               ) : (
                 rows.map((r: InventoryStock) => {
-                  const avail    = r.availableQuantity ?? 0;
-                  const reserved = r.reservedQuantity  ?? 0;
+                  const avail = r.availableQuantity ?? 0;
+                  const reserved = r.reservedQuantity ?? 0;
                   return (
                     <tr key={r.id}>
                       <td className="mono">{r.id}</td>
@@ -207,6 +210,30 @@ export function InventoryPage() {
               )}
             </tbody>
           </table>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginTop: 14 }}>
+          <span className="muted" style={{ fontSize: 12 }}>
+            Trang {totalPages === 0 ? 0 : page + 1} / {totalPages}
+          </span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              className="adm-button"
+              type="button"
+              disabled={page <= 0 || inventoryQuery.isLoading}
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+            >
+              Truoc
+            </button>
+            <button
+              className="adm-button"
+              type="button"
+              disabled={page + 1 >= totalPages || inventoryQuery.isLoading}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Tiep
+            </button>
+          </div>
         </div>
       </div>
     </div>

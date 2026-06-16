@@ -1,56 +1,59 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { adminApi, type AdminUser, type AdminShiftRequestItemDto } from '../api/adminApi';
-import { 
-  UserPlus, Search, Edit, Ban, CheckCircle, XCircle,
-  ClipboardCheck, BarChart2, User as UserIcon
-} from 'lucide-react';
+import { BarChart2, CheckCircle, ClipboardCheck, Download, Search, XCircle } from 'lucide-react';
+import { adminApi, type AdminShiftRequestItemDto } from '../api/adminApi';
 
-const isStrongPassword = (p: string) => p.length >= 8 && /[A-Za-z]/.test(p) && /\d/.test(p);
+type StaffTab = 'requests' | 'attendance';
+type ShiftRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+type SelectedAttendanceStaff = { userId: number; name: string; score: number } | null;
+
+const HOURLY_WAGE = 30000;
+
+const statusLabel = (status: string) => {
+  if (status === 'PENDING') return 'Cho duyet';
+  if (status === 'APPROVED') return 'Da duyet';
+  if (status === 'REJECTED') return 'Da tu choi';
+  if (status === 'CANCELLED') return 'Da huy';
+  return status || '-';
+};
+
+const statusClass = (status: string) => {
+  if (status === 'PENDING') return 'adm-badge--warn';
+  if (status === 'APPROVED') return 'adm-badge--success';
+  if (status === 'REJECTED') return 'adm-badge--danger';
+  return 'adm-badge--muted';
+};
+
+const shiftLabel = (item: AdminShiftRequestItemDto) => {
+  if (item.shiftType === 'S') return 'Sang (6:30 - 14:30)';
+  if (item.shiftType === 'C') return 'Chieu (14:30 - 22:30)';
+  return `Hanh chinh${item.selectedBlocks ? `: ${item.selectedBlocks}` : ''}`;
+};
+
+const csvEscape = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+const formatMoney = (value: number) => value.toLocaleString('vi-VN') + '₫';
+const formatHours = (minutes: number) => `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 
 export function StaffPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  
-  // Tabs State
-  const [activeTab, setActiveTab] = useState<'list' | 'requests' | 'attendance'>('list');
 
-  // List State
-  const [page] = useState(0);
-  const [size] = useState(10);
-  const [statusFilter, setStatusFilter] = useState('');
-  const [searchKeyword, setSearchKeyword] = useState('');
-
-  // Form State
-  const [editId, setEditId] = useState<number | null>(null);
-  const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [password, setPassword] = useState('');
-  const [avatarUrl, setAvatarUrl] = useState('');
-  const [reason, setReason] = useState('');
-  const [showForm, setShowForm] = useState(false);
-
-  // Requests Filter State
-  const [requestStatusFilter, setRequestStatusFilter] = useState('PENDING');
-
-  // Queries
-  const staffQuery = useQuery({
-    queryKey: ['admin-staff', page, size, statusFilter],
-    queryFn: () =>
-      adminApi.users.list({
-        page,
-        size,
-        role: 'STAFF',
-        status: statusFilter || undefined,
-      }),
-    enabled: activeTab === 'list',
-  });
+  const [activeTab, setActiveTab] = useState<StaffTab>('requests');
+  const [requestStatusFilter, setRequestStatusFilter] = useState<ShiftRequestStatus>('PENDING');
+  const [requestFrom, setRequestFrom] = useState('');
+  const [requestTo, setRequestTo] = useState('');
+  const [requestSearch, setRequestSearch] = useState('');
+  const [selectedRequestIds, setSelectedRequestIds] = useState<number[]>([]);
+  const [selectedAttendanceStaff, setSelectedAttendanceStaff] = useState<SelectedAttendanceStaff>(null);
 
   const requestsQuery = useQuery({
-    queryKey: ['admin-shift-requests', requestStatusFilter],
-    queryFn: () => adminApi.shiftRequests.list({ status: requestStatusFilter }),
+    queryKey: ['admin-shift-requests', requestStatusFilter, requestFrom, requestTo],
+    queryFn: () => adminApi.shiftRequests.list({
+      status: requestStatusFilter,
+      from: requestFrom || undefined,
+      to: requestTo || undefined,
+    }),
     enabled: activeTab === 'requests',
   });
 
@@ -60,84 +63,102 @@ export function StaffPage() {
     enabled: activeTab === 'attendance',
   });
 
-  // Mutations
-  const createMutation = useMutation({
-    mutationFn: () => {
-      if (!fullName.trim()) throw new Error('Thiếu họ tên');
-      if (!email.trim()) throw new Error('Thiếu email');
-      if (!isStrongPassword(password)) throw new Error('Mật khẩu >= 8 ký tự, gồm chữ và số');
-      return adminApi.users.create({
-        fullName: fullName.trim(),
-        email: email.trim(),
-        phone: phone.trim() || undefined,
-        password,
-        roleName: 'STAFF',
-        avatarUrl: avatarUrl.trim() || undefined,
-        reason: reason.trim() || undefined,
-      });
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['admin-staff'] });
-      resetForm();
-      alert('Thêm nhân viên thành công');
-    },
+  const staffCountQuery = useQuery({
+    queryKey: ['admin-staff-count-attendance'],
+    queryFn: () => adminApi.users.count('STAFF'),
+    enabled: activeTab === 'attendance',
   });
 
-  const updateMutation = useMutation({
-    mutationFn: (id: number) =>
-      adminApi.users.update(id, {
-        fullName: fullName.trim() || undefined,
-        email: email.trim() || undefined,
-        phone: phone.trim() || undefined,
-        password: password.trim() || undefined,
-        avatarUrl: avatarUrl.trim() || undefined,
-        reason: reason.trim() || undefined,
-      }),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['admin-staff'] });
-      resetForm();
-      alert('Cập nhật thông tin thành công');
-    },
+  const pendingShiftRequestsQuery = useQuery({
+    queryKey: ['admin-shift-requests-pending-count'],
+    queryFn: () => adminApi.shiftRequests.list({ status: 'PENDING' }),
+    enabled: activeTab === 'attendance',
   });
 
-  const statusMutation = useMutation({
-    mutationFn: ({ id, nextStatus, rsn }: { id: number; nextStatus: 'ACTIVE' | 'INACTIVE'; rsn: string }) =>
-      adminApi.users.setStatus(id, nextStatus, rsn),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['admin-staff'] });
+  const selectedStaffMonthlyStatsQuery = useQuery({
+    queryKey: ['admin-staff-monthly-stats', selectedAttendanceStaff?.userId],
+    queryFn: () => {
+      const now = new Date();
+      if (!selectedAttendanceStaff) throw new Error('Thieu nhan vien');
+      return adminApi.attendance.getMonthlyStats(selectedAttendanceStaff.userId, now.getFullYear(), now.getMonth() + 1);
     },
+    enabled: activeTab === 'attendance' && selectedAttendanceStaff != null,
   });
+
+  const visibleRequests = useMemo(() => {
+    const keyword = requestSearch.trim().toLowerCase();
+    const rows = requestsQuery.data ?? [];
+    if (!keyword) return rows;
+    return rows.filter((item) =>
+      [item.userFullName, item.shiftType, item.selectedBlocks]
+        .some((value) => String(value ?? '').toLowerCase().includes(keyword)),
+    );
+  }, [requestSearch, requestsQuery.data]);
+
+  const selectedVisibleIds = visibleRequests.filter((item) => item.status === 'PENDING').map((item) => item.id);
+  const allVisibleSelected = selectedVisibleIds.length > 0 && selectedVisibleIds.every((id) => selectedRequestIds.includes(id));
 
   const approveShiftMutation = useMutation({
     mutationFn: ({ id, status, note }: { id: number; status: 'APPROVED' | 'REJECTED'; note?: string }) =>
       adminApi.shiftRequests.updateStatus(id, { status, adminNote: note }),
     onSuccess: async () => {
+      setSelectedRequestIds([]);
       await queryClient.invalidateQueries({ queryKey: ['admin-shift-requests'] });
     },
   });
 
-  const resetForm = () => {
-    setEditId(null);
-    setFullName('');
-    setEmail('');
-    setPhone('');
-    setPassword('');
-    setAvatarUrl('');
-    setReason('');
-    setShowForm(false);
+  const bulkShiftMutation = useMutation({
+    mutationFn: async ({ ids, status, note }: { ids: number[]; status: 'APPROVED' | 'REJECTED'; note?: string }) => {
+      await Promise.all(ids.map((id) => adminApi.shiftRequests.updateStatus(id, { status, adminNote: note })));
+    },
+    onSuccess: async () => {
+      setSelectedRequestIds([]);
+      await queryClient.invalidateQueries({ queryKey: ['admin-shift-requests'] });
+    },
+  });
+
+  const toggleRequest = (id: number) => {
+    setSelectedRequestIds((ids) => ids.includes(id) ? ids.filter((item) => item !== id) : [...ids, id]);
   };
 
-  const filteredStaff = useMemo(() => {
-    const data = staffQuery.data?.content ?? [];
-    if (!searchKeyword.trim()) return data;
-    const kw = searchKeyword.toLowerCase();
-    return data.filter(
-      (u) =>
-        u.fullName?.toLowerCase().includes(kw) ||
-        u.email.toLowerCase().includes(kw) ||
-        u.phone?.includes(kw)
+  const toggleVisibleRequests = () => {
+    setSelectedRequestIds((ids) =>
+      allVisibleSelected ? ids.filter((id) => !selectedVisibleIds.includes(id)) : Array.from(new Set([...ids, ...selectedVisibleIds])),
     );
-  }, [staffQuery.data?.content, searchKeyword]);
+  };
+
+  const rejectOne = (id: number) => {
+    const note = window.prompt('Nhap ly do tu choi')?.trim();
+    if (!note) return;
+    approveShiftMutation.mutate({ id, status: 'REJECTED', note });
+  };
+
+  const rejectSelected = () => {
+    const note = window.prompt(`Nhap ly do tu choi ${selectedRequestIds.length} don`)?.trim();
+    if (!note) return;
+    bulkShiftMutation.mutate({ ids: selectedRequestIds, status: 'REJECTED', note });
+  };
+
+  const exportAttendanceCsv = () => {
+    const rows = attendanceInsightsQuery.data?.topPerformers ?? [];
+    const csvRows = [
+      ['Hang', 'Nhan vien', 'Diem chuyen can'].map(csvEscape).join(','),
+      ...rows.map((item, index) => [index + 1, item.name, item.score].map(csvEscape).join(',')),
+    ];
+    const blob = new Blob(['\ufeff' + csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `cham-cong-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const detailStats = selectedStaffMonthlyStatsQuery.data;
+  const workedMinutes = detailStats?.totalWorkedMinutes ?? 0;
+  const estimatedSalary = Math.round((workedMinutes / 60) * HOURLY_WAGE);
 
   return (
     <div className="page">
@@ -146,197 +167,110 @@ export function StaffPage() {
           <div className="page__title">{t('pages.staffTitle')}</div>
           <div className="page__subtitle">{t('pages.staffSubtitle')}</div>
         </div>
-        {activeTab === 'list' && (
-          <button className="adm-button adm-button--primary" onClick={() => setShowForm(true)}>
-            <UserPlus size={18} />
-            <span>Thêm nhân viên</span>
+        {activeTab === 'attendance' && (
+          <button className="adm-button adm-button--primary" type="button" onClick={exportAttendanceCsv}>
+            <Download size={16} />
+            <span>Xuat Excel</span>
           </button>
         )}
       </div>
 
-      {/* Tabs Navigation */}
       <div className="card" style={{ padding: 0, marginBottom: 15, overflow: 'hidden' }}>
         <div style={{ display: 'flex', background: 'var(--panel-2)' }}>
-          <button className={`adm-nav__item ${activeTab === 'list' ? 'is-active' : ''}`} style={{ border: 0, borderRadius: 0, padding: '12px 20px', flex: 1 }} onClick={() => setActiveTab('list')}>
-            <UserIcon size={16} /> Danh sách nhân viên
+          <button className={`adm-nav__item ${activeTab === 'requests' ? 'is-active' : ''}`} style={{ border: 0, borderRadius: 0, padding: '12px 20px', flex: 1 }} onClick={() => setActiveTab('requests')} type="button">
+            <ClipboardCheck size={16} /> Duyet dang ky ca
           </button>
-          <button className={`adm-nav__item ${activeTab === 'requests' ? 'is-active' : ''}`} style={{ border: 0, borderRadius: 0, padding: '12px 20px', flex: 1 }} onClick={() => setActiveTab('requests')}>
-            <ClipboardCheck size={16} /> Duyệt đăng ký ca
-          </button>
-          <button className={`adm-nav__item ${activeTab === 'attendance' ? 'is-active' : ''}`} style={{ border: 0, borderRadius: 0, padding: '12px 20px', flex: 1 }} onClick={() => setActiveTab('attendance')}>
-            <BarChart2 size={16} /> Thống kê & Chấm công
+          <button className={`adm-nav__item ${activeTab === 'attendance' ? 'is-active' : ''}`} style={{ border: 0, borderRadius: 0, padding: '12px 20px', flex: 1 }} onClick={() => setActiveTab('attendance')} type="button">
+            <BarChart2 size={16} /> Thong ke & Cham cong
           </button>
         </div>
       </div>
 
-      {/* Tab: Staff List */}
-      {activeTab === 'list' && (
-        <>
-          {showForm && (
-            <div className="card" style={{ border: '1px solid var(--primary)', marginBottom: 15 }}>
-              <div className="card__label">{editId ? `Chỉnh sửa nhân viên #${editId}` : 'Tạo nhân viên mới'}</div>
-              <div className="form-grid">
-                <label className="adm-field">
-                  <div className="adm-field__label">Họ tên</div>
-                  <input className="adm-input" value={fullName} onChange={(e) => setFullName(e.target.value)} />
-                </label>
-                <label className="adm-field">
-                  <div className="adm-field__label">Email</div>
-                  <input className="adm-input" value={email} onChange={(e) => setEmail(e.target.value)} />
-                </label>
-                <label className="adm-field">
-                  <div className="adm-field__label">Số điện thoại</div>
-                  <input className="adm-input" value={phone} onChange={(e) => setPhone(e.target.value)} />
-                </label>
-                <label className="adm-field">
-                  <div className="adm-field__label">Mật khẩu</div>
-                  <input className="adm-input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={editId ? 'Để trống nếu không đổi' : 'Tối thiểu 8 ký tự'} />
-                </label>
-                <label className="adm-field">
-                  <div className="adm-field__label">Lý do lưu (Audit)</div>
-                  <input className="adm-input" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Nhập lý do lưu..." />
-                </label>
-              </div>
-              <div className="row-actions">
-                <button className="adm-button adm-button--ghost" onClick={resetForm}>Hủy</button>
-                <button className="adm-button adm-button--primary" onClick={() => (editId ? updateMutation.mutate(editId) : createMutation.mutate())} disabled={createMutation.isPending || updateMutation.isPending}>
-                  {editId ? 'Cập nhật' : 'Tạo mới'}
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div className="card">
-            <div className="filters">
-              <div className="filters__row">
-                <label className="adm-field">
-                  <div className="adm-field__label">Tìm kiếm</div>
-                  <div style={{ position: 'relative' }}>
-                    <Search size={14} style={{ position: 'absolute', left: 10, top: 12, color: 'var(--muted)' }} />
-                    <input className="adm-input" style={{ paddingLeft: 32 }} placeholder="Tên, Email..." value={searchKeyword} onChange={(e) => setSearchKeyword(e.target.value)} />
-                  </div>
-                </label>
-                <label className="adm-field">
-                  <div className="adm-field__label">Trạng thái</div>
-                  <select className="adm-input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-                    <option value="">Tất cả</option>
-                    <option value="ACTIVE">Đang làm việc</option>
-                    <option value="INACTIVE">Nghỉ việc/Tạm dừng</option>
-                  </select>
-                </label>
-              </div>
-            </div>
-            <div className="table-wrap" style={{ marginTop: 15 }}>
-              <table className="adm-table">
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>Nhân viên</th>
-                    <th>Liên hệ</th>
-                    <th>Trạng thái</th>
-                    <th style={{ textAlign: 'right' }}>Thao tác</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {staffQuery.isLoading ? <tr><td colSpan={5} className="muted">Đang tải...</td></tr> : filteredStaff.map((u: AdminUser) => (
-                    <tr key={u.id}>
-                      <td className="mono">{u.id}</td>
-                      <td>
-                        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                          <div className="adm-user__avatar" style={{ width: 32, height: 32 }}>{u.avatarUrl ? <img src={u.avatarUrl} className="adm-brand__logo-img" alt="" /> : (u.fullName || 'S')[0]}</div>
-                          <div>
-                            <div style={{ fontWeight: 600 }}>{u.fullName || 'N/A'}</div>
-                            <div style={{ fontSize: 11, color: 'var(--muted)' }}>{u.email}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="mono" style={{ fontSize: 12 }}>{u.phone || '-'}</td>
-                      <td>
-                        {u.status === 'ACTIVE' ? (
-                          <span style={{ color: 'var(--ok)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><CheckCircle size={14} /> Hoạt động</span>
-                        ) : (
-                          <span style={{ color: 'var(--danger)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Ban size={14} /> Tạm dừng</span>
-                        )}
-                      </td>
-                      <td className="cell-actions">
-                        <button className="adm-button adm-button--ghost" onClick={() => {
-                          setEditId(u.id);
-                          setFullName(u.fullName || '');
-                          setEmail(u.email);
-                          setPhone(u.phone || '');
-                          setShowForm(true);
-                        }}><Edit size={14} /></button>
-                        <button className="adm-button adm-button--ghost" style={{ color: u.status === 'ACTIVE' ? 'var(--danger)' : 'var(--ok)' }} onClick={() => {
-                          const rsn = window.prompt(`Lý do ${u.status === 'ACTIVE' ? 'tạm dừng' : 'kích hoạt'}?`) || 'Admin update';
-                          statusMutation.mutate({ id: u.id, nextStatus: u.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE', rsn });
-                        }}>{u.status === 'ACTIVE' ? <Ban size={14} /> : <CheckCircle size={14} />}</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Tab: Shift Requests */}
       {activeTab === 'requests' && (
         <div className="card">
           <div className="filters">
             <div className="filters__row">
               <label className="adm-field">
-                <div className="adm-field__label">Trạng thái đơn</div>
-                <select className="adm-input" value={requestStatusFilter} onChange={(e) => setRequestStatusFilter(e.target.value)}>
-                  <option value="PENDING">Chờ duyệt</option>
-                  <option value="APPROVED">Đã duyệt</option>
-                  <option value="REJECTED">Đã từ chối</option>
+                <div className="adm-field__label">Trang thai don</div>
+                <select className="adm-input" value={requestStatusFilter} onChange={(e) => { setRequestStatusFilter(e.target.value as ShiftRequestStatus); setSelectedRequestIds([]); }}>
+                  <option value="PENDING">Cho duyet</option>
+                  <option value="APPROVED">Da duyet</option>
+                  <option value="REJECTED">Da tu choi</option>
                 </select>
+              </label>
+              <label className="adm-field">
+                <div className="adm-field__label">Tu ngay</div>
+                <input className="adm-input" type="date" value={requestFrom} onChange={(e) => setRequestFrom(e.target.value)} />
+              </label>
+              <label className="adm-field">
+                <div className="adm-field__label">Den ngay</div>
+                <input className="adm-input" type="date" value={requestTo} onChange={(e) => setRequestTo(e.target.value)} />
+              </label>
+              <label className="adm-field" style={{ flex: 1.5 }}>
+                <div className="adm-field__label">Ten nhan vien / chi nhanh</div>
+                <div style={{ position: 'relative' }}>
+                  <Search size={14} style={{ position: 'absolute', left: 10, top: 12, color: 'var(--muted)' }} />
+                  <input className="adm-input" style={{ paddingLeft: 32 }} placeholder="Ten, ca truc..." value={requestSearch} onChange={(e) => setRequestSearch(e.target.value)} />
+                </div>
               </label>
             </div>
           </div>
+
+          <div className="row-actions row-actions--between" style={{ marginTop: 12 }}>
+            <div className="muted">Da chon {selectedRequestIds.length} don</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="adm-button adm-button--primary" type="button" disabled={selectedRequestIds.length === 0 || bulkShiftMutation.isPending} onClick={() => bulkShiftMutation.mutate({ ids: selectedRequestIds, status: 'APPROVED' })}>
+                Duyet tat ca
+              </button>
+              <button className="adm-button adm-button--danger" type="button" disabled={selectedRequestIds.length === 0 || bulkShiftMutation.isPending} onClick={rejectSelected}>
+                Tu choi tat ca
+              </button>
+            </div>
+          </div>
+
           <div className="table-wrap" style={{ marginTop: 15 }}>
             <table className="adm-table">
               <thead>
                 <tr>
-                  <th>Ngày làm</th>
-                  <th>Nhân viên</th>
-                  <th>Ca trực</th>
-                  <th>Tình trạng nhân sự</th>
-                  <th style={{ textAlign: 'right' }}>Thao tác</th>
+                  <th><input type="checkbox" checked={allVisibleSelected} onChange={toggleVisibleRequests} disabled={selectedVisibleIds.length === 0} /></th>
+                  <th>Ngay lam</th>
+                  <th>Nhan vien</th>
+                  <th>Ca truc</th>
+                  <th>Trang thai</th>
+                  <th>Tinh trang nhan su</th>
+                  <th style={{ textAlign: 'right' }}>Thao tac</th>
                 </tr>
               </thead>
               <tbody>
-                {requestsQuery.isLoading ? <tr><td colSpan={5} className="muted">Đang tải...</td></tr> : requestsQuery.data?.length === 0 ? <tr><td colSpan={5} className="muted">Không có yêu cầu nào</td></tr> : requestsQuery.data?.map((r: AdminShiftRequestItemDto) => (
-                  <tr key={r.id}>
-                    <td className="mono">{new Date(r.workDate).toLocaleDateString('vi-VN')}</td>
-                    <td><div style={{ fontWeight: 600 }}>{r.userFullName}</div></td>
-                    <td>
-                      <div className="adm-chip">
-                        {r.shiftType === 'S' ? 'Sáng (6:30 - 14:30)' : r.shiftType === 'C' ? 'Chiều (14:30 - 22:30)' : `Hành chính (Blocks: ${r.selectedBlocks})`}
-                      </div>
-                    </td>
+                {requestsQuery.isLoading ? (
+                  <tr><td colSpan={7} className="muted">Dang tai...</td></tr>
+                ) : visibleRequests.length === 0 ? (
+                  <tr><td colSpan={7} className="muted">Khong co yeu cau nao</td></tr>
+                ) : visibleRequests.map((item) => (
+                  <tr key={item.id}>
+                    <td><input type="checkbox" checked={selectedRequestIds.includes(item.id)} disabled={item.status !== 'PENDING'} onChange={() => toggleRequest(item.id)} /></td>
+                    <td className="mono">{new Date(item.workDate).toLocaleDateString('vi-VN')}</td>
+                    <td><div style={{ fontWeight: 600 }}>{item.userFullName || '-'}</div></td>
+                    <td><div className="adm-chip">{shiftLabel(item)}</div></td>
+                    <td><span className={`adm-badge ${statusClass(item.status)}`}>{statusLabel(item.status)}</span></td>
                     <td>
                       <div style={{ fontSize: 12 }}>
-                        <div>Hiện tại: <strong>{r.scheduledCount}</strong> người</div>
-                        <div className="muted">Sau khi duyệt: {r.scheduledAfterApprove} người</div>
+                        <div>Hien tai: <strong>{item.scheduledCount}</strong> nguoi</div>
+                        <div className="muted">Sau khi duyet: {item.scheduledAfterApprove} nguoi</div>
                       </div>
                     </td>
                     <td className="cell-actions">
-                      {r.status === 'PENDING' ? (
+                      {item.status === 'PENDING' ? (
                         <>
-                          <button className="adm-button adm-button--ghost" style={{ color: 'var(--ok)' }} onClick={() => approveShiftMutation.mutate({ id: r.id, status: 'APPROVED' })}>
-                            <CheckCircle size={14} /> Duyệt
+                          <button className="adm-button adm-button--ghost" style={{ color: 'var(--ok)' }} onClick={() => approveShiftMutation.mutate({ id: item.id, status: 'APPROVED' })} type="button">
+                            <CheckCircle size={14} /> Duyet
                           </button>
-                          <button className="adm-button adm-button--ghost" style={{ color: 'var(--danger)' }} onClick={() => {
-                            const note = window.prompt('Lý do từ chối?') || '';
-                            approveShiftMutation.mutate({ id: r.id, status: 'REJECTED', note });
-                          }}>
-                            <XCircle size={14} /> Từ chối
+                          <button className="adm-button adm-button--ghost" style={{ color: 'var(--danger)' }} onClick={() => rejectOne(item.id)} type="button">
+                            <XCircle size={14} /> Tu choi
                           </button>
                         </>
                       ) : (
-                        <span className="adm-chip">{r.status}</span>
+                        <span className="muted">-</span>
                       )}
                     </td>
                   </tr>
@@ -347,45 +281,117 @@ export function StaffPage() {
         </div>
       )}
 
-      {/* Tab: Attendance Analytics */}
       {activeTab === 'attendance' && (
         <div className="grid">
           <div className="grid grid--3">
             <div className="card">
-              <div className="card__label">Tổng nhân viên</div>
-              <div className="card__value">{attendanceInsightsQuery.data?.totalStaff || 0}</div>
-              <div className="card__hint">Đã đăng ký tài khoản</div>
+              <div className="card__label">Tong nhan vien</div>
+              <div className="card__value">{staffCountQuery.data ?? 0}</div>
+              <div className="card__hint">Da dang ky tai khoan</div>
             </div>
             <div className="card">
-              <div className="card__label">Đang trực hôm nay</div>
+              <div className="card__label">Dang truc hom nay</div>
               <div className="card__value" style={{ color: 'var(--ok)' }}>{attendanceInsightsQuery.data?.activeToday || 0}</div>
-              <div className="card__hint">Đã bấm Check-in</div>
+              <div className="card__hint">Da bam Check-in</div>
             </div>
             <div className="card">
-              <div className="card__label">Yêu cầu chờ duyệt</div>
-              <div className="card__value" style={{ color: (attendanceInsightsQuery.data?.pendingRequests || 0) > 0 ? 'var(--danger)' : 'inherit' }}>
-                {attendanceInsightsQuery.data?.pendingRequests || 0}
+              <div className="card__label">Yeu cau cho duyet</div>
+              <div className="card__value" style={{ color: (pendingShiftRequestsQuery.data?.length || 0) > 0 ? 'var(--danger)' : 'inherit' }}>
+                {pendingShiftRequestsQuery.data?.length ?? 0}
               </div>
-              <div className="card__hint">Đơn đăng ký ca</div>
+              <div className="card__hint">Don dang ky ca</div>
             </div>
           </div>
 
           <div className="card" style={{ marginTop: 15 }}>
-            <div className="card__label">Bảng xếp hạng hiệu suất (Tháng này)</div>
+            <div className="card__label">Bang xep hang hieu suat (Thang nay)</div>
             <div className="list">
-              {attendanceInsightsQuery.data?.topPerformers.map((p, idx) => (
-                <div key={p.userId} className="list__row" style={{ alignItems: 'center' }}>
+              {(attendanceInsightsQuery.data?.topPerformers ?? []).length === 0 && <div className="muted">Chua co du lieu hieu suat.</div>}
+              {attendanceInsightsQuery.data?.topPerformers?.map((item, index) => (
+                <div key={item.userId} className="list__row" style={{ alignItems: 'center' }}>
                   <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                    <div className="adm-user__avatar" style={{ width: 28, height: 28, fontSize: 10 }}>{idx + 1}</div>
-                    <div style={{ fontWeight: 600 }}>{p.name}</div>
+                    <div className="adm-user__avatar" style={{ width: 28, height: 28, fontSize: 10 }}>{index + 1}</div>
+                    <button
+                      className="adm-button adm-button--ghost"
+                      type="button"
+                      style={{ padding: '6px 10px', justifyContent: 'flex-start' }}
+                      onClick={() => setSelectedAttendanceStaff(item)}
+                    >
+                      {item.name}
+                    </button>
                   </div>
                   <div style={{ display: 'flex', gap: 15, alignItems: 'center' }}>
-                    <div style={{ fontSize: 12 }}>Chỉ số chuyên cần: <span style={{ fontWeight: 700, color: 'var(--primary)' }}>{p.score}%</span></div>
+                    <div style={{ fontSize: 12 }}>Diem chuyen can: <span style={{ fontWeight: 700, color: item.score < 0 ? 'var(--danger)' : 'var(--primary)' }}>{item.score}</span></div>
                   </div>
                 </div>
               ))}
             </div>
           </div>
+
+          {selectedAttendanceStaff && (
+            <div className="card" style={{ marginTop: 15 }}>
+              <div className="row-actions row-actions--between" style={{ marginBottom: 12 }}>
+                <div>
+                  <div className="card__label">{selectedAttendanceStaff.name}</div>
+                  <div className="card__hint">Chi tiet cham cong thang nay</div>
+                </div>
+                <button className="adm-button adm-button--ghost" type="button" onClick={() => setSelectedAttendanceStaff(null)}>
+                  Dong
+                </button>
+              </div>
+
+              {selectedStaffMonthlyStatsQuery.isLoading ? (
+                <div className="muted">Dang tai chi tiet...</div>
+              ) : selectedStaffMonthlyStatsQuery.isError ? (
+                <div className="inline-alert">
+                  {selectedStaffMonthlyStatsQuery.error instanceof Error ? selectedStaffMonthlyStatsQuery.error.message : 'Khong tai duoc chi tiet cham cong'}
+                </div>
+              ) : (
+                <div className="grid grid--4">
+                  <div className="card">
+                    <div className="card__label">Luong tam tinh</div>
+                    <div className="card__value">{formatMoney(estimatedSalary)}</div>
+                    <div className="card__hint">{formatHours(workedMinutes)} x {formatMoney(HOURLY_WAGE)}/gio</div>
+                  </div>
+                  <div className="card">
+                    <div className="card__label">Ngay lam</div>
+                    <div className="card__value">{detailStats?.attendedDays ?? 0}</div>
+                    <div className="card__hint">Co check-in</div>
+                  </div>
+                  <div className="card">
+                    <div className="card__label">Dung ca</div>
+                    <div className="card__value">{detailStats?.onTimeCheckIns ?? 0}</div>
+                    <div className="card__hint">Check-in dung gio</div>
+                  </div>
+                  <div className="card">
+                    <div className="card__label">Vang</div>
+                    <div className="card__value" style={{ color: (detailStats?.absentDays ?? 0) > 0 ? 'var(--danger)' : 'inherit' }}>{detailStats?.absentDays ?? 0}</div>
+                    <div className="card__hint">Ngay co lich nhung khong lam</div>
+                  </div>
+                  <div className="card">
+                    <div className="card__label">Ca duoc xep</div>
+                    <div className="card__value">{detailStats?.scheduledDays ?? 0}</div>
+                    <div className="card__hint">{detailStats?.totalBlocks ?? 0} block</div>
+                  </div>
+                  <div className="card">
+                    <div className="card__label">Ca hoan tat</div>
+                    <div className="card__value">{detailStats?.completedBlocks ?? 0}</div>
+                    <div className="card__hint">{Math.round(detailStats?.completionRate ?? 0)}% hoan thanh</div>
+                  </div>
+                  <div className="card">
+                    <div className="card__label">Di tre</div>
+                    <div className="card__value" style={{ color: (detailStats?.lateCheckIns ?? 0) > 0 ? 'var(--danger)' : 'inherit' }}>{detailStats?.lateCheckIns ?? 0}</div>
+                    <div className="card__hint">{detailStats?.lateMinutes ?? 0} phut tre</div>
+                  </div>
+                  <div className="card">
+                    <div className="card__label">Ve som</div>
+                    <div className="card__value" style={{ color: (detailStats?.earlyCheckOuts ?? 0) > 0 ? 'var(--danger)' : 'inherit' }}>{detailStats?.earlyCheckOuts ?? 0}</div>
+                    <div className="card__hint">{detailStats?.earlyMinutes ?? 0} phut som</div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -72,13 +72,11 @@ apiClient.interceptors.request.use((config) => {
   }
   headers.set('X-Device-Fingerprint', deviceFingerprint);
   config.headers = headers;
-  console.debug('API request', { method: config.method, url: config.url, headers: headers.toJSON() });
   return config;
 });
 
 apiClient.interceptors.response.use(
   (response) => {
-    console.debug('API response', { status: response.status, data: response.data });
     const payload = response.data;
     // Standardized unwrapping
     if (payload && typeof payload === 'object' && 'data' in payload) {

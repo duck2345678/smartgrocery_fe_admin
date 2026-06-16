@@ -31,7 +31,7 @@ export function ProfilePage() {
 
   // ── Form state ──
   const [fullName, setFullName] = useState(user?.fullName ?? '');
-  const [email,    setEmail]    = useState(user?.email ?? '');
+  const [email] = useState(user?.email ?? '');
   const [phone,    setPhone]    = useState('');
   const [phoneInit, setPhoneInit] = useState(false);
 
